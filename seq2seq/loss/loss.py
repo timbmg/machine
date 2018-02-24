@@ -31,10 +31,11 @@ class Loss(object):
             sub-classes.
     """
 
-    def __init__(self, name, log_name, inputs, criterion):
+    def __init__(self, name, log_name, inputs, target, criterion):
         self.name = name
         self.log_name = log_name
         self.inputs = inputs
+        self.target = target
         self.criterion = criterion
         if not issubclass(type(self.criterion), nn.modules.loss._Loss):
             raise ValueError("Criterion has to be a subclass of torch.nn._Loss")
@@ -79,8 +80,10 @@ class Loss(object):
         else:
             outputs = other[self.inputs]
 
+        targets = target_variable[self.target]
+
         for step, step_output in enumerate(outputs):
-            target = target_variable[:, step + 1]
+            target = targets[:, step + 1]
             self.eval_step(step_output, target)
 
     def eval_step(self, outputs, target):
@@ -114,6 +117,7 @@ class NLLLoss(Loss):
     _NAME = "Avg NLLLoss"
     _SHORTNAME = "nll_loss"
     _INPUTS = "decoder_output"
+    _TARGETS = "decoder_output"
 
     def __init__(self, weight=None, mask=None, size_average=True):
         self.mask = mask
@@ -124,7 +128,7 @@ class NLLLoss(Loss):
             weight[mask] = 0
 
         super(NLLLoss, self).__init__(
-            self._NAME, self._SHORTNAME, self._INPUTS,
+            self._NAME, self._SHORTNAME, self._INPUTS, self._TARGETS,
             nn.NLLLoss(weight=weight, size_average=size_average))
 
     def get_loss(self):
