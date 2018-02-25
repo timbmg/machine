@@ -97,10 +97,10 @@ class Loss(object):
     def cuda(self):
         self.criterion.cuda()
 
-    def backward(self):
+    def backward(self, retain_graph=False):
         if type(self.acc_loss) is int:
             raise ValueError("No loss to back propagate.")
-        self.acc_loss.backward()
+        self.acc_loss.backward(retain_graph=retain_graph)
 
     def scale_loss(self, factor):
         self.acc_loss*=factor
@@ -109,8 +109,7 @@ class NLLLoss(Loss):
     """ Batch averaged negative log-likelihood loss.
 
     Args:
-        weight (torch.Tensor, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
-        mask (int, optional): index of masked token, i.e. weight[mask] = 0.
+        ignore_index (int, optional): index of masked token
         size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
 
@@ -119,17 +118,13 @@ class NLLLoss(Loss):
     _INPUTS = "decoder_output"
     _TARGETS = "decoder_output"
 
-    def __init__(self, weight=None, mask=None, size_average=True):
-        self.mask = mask
+    def __init__(self, ignore_index=-100, size_average=True):
+        self.ignore_index = ignore_index
         self.size_average = size_average
-        if mask is not None:
-            if weight is None:
-                raise ValueError("Must provide weight with a mask.")
-            weight[mask] = 0
 
         super(NLLLoss, self).__init__(
             self._NAME, self._SHORTNAME, self._INPUTS, self._TARGETS,
-            nn.NLLLoss(weight=weight, size_average=size_average))
+            nn.NLLLoss(ignore_index=ignore_index, size_average=size_average))
 
     def get_loss(self):
         if isinstance(self.acc_loss, int):
@@ -154,8 +149,7 @@ class Perplexity(NLLLoss):
     same, it is the exponential of negative log-likelihood.
 
     Args:
-        weight (torch.Tensor, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
-        mask (int, optional): index of masked token, i.e. weight[mask] = 0.
+        ignore_index (int, optional): index to be masked, refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
 
     _NAME = "Perplexity"
@@ -163,15 +157,15 @@ class Perplexity(NLLLoss):
     _MAX_EXP = 100
     _INPUTS = "decoder_output"
 
-    def __init__(self, weight=None, mask=None):
-        super(Perplexity, self).__init__(weight=weight, mask=mask, size_average=False)
+    def __init__(self, ignore_index=-100):
+        super(Perplexity, self).__init__(ignore_index=ignore_index, size_average=False)
 
     def eval_step(self, outputs, target):
         self.acc_loss += self.criterion(outputs, target)
-        if self.mask is None:
+        if self.ignore_index is -100:
             self.norm_term += np.prod(target.size())
         else:
-            self.norm_term += target.data.ne(self.mask).sum()
+            self.norm_term += target.data.ne(self.ignore_index).sum()
 
     def get_loss(self):
         nll = super(Perplexity, self).get_loss()
