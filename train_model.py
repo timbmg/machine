@@ -156,8 +156,8 @@ if opt.use_attention_loss:
 
 metrics = [WordAccuracy(weight, pad), SequenceAccuracy(weight, pad)]
 if torch.cuda.is_available():
-    for loss in loss:
-        loss.cuda()
+    for loss_func in loss:
+        loss_func.cuda()
 
 # create trainer
 t = SupervisedTrainer(loss=loss, metrics=metrics, 
