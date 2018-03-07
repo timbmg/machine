@@ -158,8 +158,6 @@ metrics = [WordAccuracy(weight, pad), SequenceAccuracy(weight, pad)]
 if torch.cuda.is_available():
     for loss in loss:
         loss.cuda()
-    for metric in metrics:
-        metric.cuda()
 
 # create trainer
 t = SupervisedTrainer(loss=loss, metrics=metrics, 
