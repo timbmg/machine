@@ -124,7 +124,7 @@ class NLLLoss(Loss):
     _INPUTS = "decoder_output"
     _TARGETS = "decoder_output"
 
-    def __init__(self, ignore_index=-100, size_average=True):
+    def __init__(self, ignore_index=-1, size_average=True):
         self.ignore_index = ignore_index
         self.size_average = size_average
 
