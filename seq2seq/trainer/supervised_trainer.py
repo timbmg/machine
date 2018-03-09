@@ -99,7 +99,7 @@ class SupervisedTrainer(object):
         losses, metrics = self.evaluator.evaluate(model, eval_data)
 
         total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
-        print log_msg
+        print(log_msg)
 
         loss_best = top_k*[total_loss]
         best_checkpoints = top_k*[None]
