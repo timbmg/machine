@@ -9,7 +9,7 @@ import torchtext
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
 from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
-from seq2seq.loss import Perplexity, AttentionLoss
+from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import SourceField, TargetField
@@ -141,13 +141,30 @@ else:
     for param in seq2seq.parameters():
         param.data.uniform_(-0.08, 0.08)
 
+<<<<<<< HEAD
+=======
+input_vocabulary = input_vocab.itos
+output_vocabulary = output_vocab.itos
+
+# random.seed(3)
+# 
+# print "Input vocabulary:"
+# for i, word in enumerate(input_vocabulary):
+#     print i, word
+# 
+# print "Output vocabulary:"
+# for i, word in enumerate(output_vocabulary):
+#     print i, word
+# 
+# raw_input()
+
 ##############################################################################
 # train model
 
 # Prepare loss and metrics
 weight = torch.ones(len(output_vocab))
 pad = output_vocab.stoi[tgt.pad_token]
-loss = [Perplexity(weight, pad)]
+loss = [NLLLoss(ignore_index=pad)]
 loss_weights = [1.]
 
 if opt.use_attention_loss:
