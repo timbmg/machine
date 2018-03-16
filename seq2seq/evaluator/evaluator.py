@@ -123,7 +123,4 @@ class Evaluator(object):
 
             metrics = self.update_batch_metrics(metrics, other, target_variable)
 
-        accuracy = metrics[0].get_val()
-        seq_accuracy = metrics[1].get_val()
-
         return losses, metrics
