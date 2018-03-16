@@ -10,6 +10,7 @@ import seq2seq
 from seq2seq.trainer import SupervisedTrainer
 from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
 from seq2seq.loss import Perplexity, NLLLoss
+from seq2seq.metrics import WordAccuracy, SequenceAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import SourceField, TargetField
 from seq2seq.evaluator import Predictor, Evaluator
@@ -135,18 +136,39 @@ else:
     for param in seq2seq.parameters():
         param.data.uniform_(-0.08, 0.08)
 
+input_vocabulary = input_vocab.itos
+output_vocabulary = output_vocab.itos
+
+# random.seed(3)
+# 
+# print "Input vocabulary:"
+# for i, word in enumerate(input_vocabulary):
+#     print i, word
+# 
+# print "Output vocabulary:"
+# for i, word in enumerate(output_vocabulary):
+#     print i, word
+# 
+# raw_input()
+
 ##############################################################################
 # train model
 
-# Prepare loss
+# Prepare loss and metrics
 weight = torch.ones(len(output_vocab))
 pad = output_vocab.stoi[tgt.pad_token]
-loss = NLLLoss(weight, pad)
+loss = [NLLLoss(ignore_index=pad)]
+loss_weights = [1.]
+
+metrics = [WordAccuracy(ignore_index=pad), SequenceAccuracy(ignore_index=pad)]
 if torch.cuda.is_available():
-    loss.cuda()
+    for loss_func in loss:
+        loss_func.cuda()
 
 # create trainer
-t = SupervisedTrainer(loss=loss, batch_size=opt.batch_size,
+t = SupervisedTrainer(loss=loss, metrics=metrics, 
+                      loss_weights=loss_weights,
+                      batch_size=opt.batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
 

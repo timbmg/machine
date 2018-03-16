@@ -12,6 +12,7 @@ from torch import optim
 import seq2seq
 from seq2seq.evaluator import Evaluator
 from seq2seq.loss import NLLLoss
+from seq2seq.metrics import WordAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.util.checkpoint import Checkpoint
 
@@ -22,11 +23,13 @@ class SupervisedTrainer(object):
     Args:
         expt_dir (optional, str): experiment Directory to store details of the experiment,
             by default it makes a folder in the current directory to store the details (default: `experiment`).
-        loss (seq2seq.loss.loss.Loss, optional): loss for training, (default: seq2seq.loss.NLLLoss)
+        loss (list, optional): list of seq2seq.loss.Loss objects for training (default: [seq2seq.loss.NLLLoss])
+        metrics (list, optional): list of seq2seq.metric.metric objects to be computed during evaluation
         batch_size (int, optional): batch size for experiment, (default: 64)
         checkpoint_every (int, optional): number of epochs to checkpoint after, (default: 100)
+        print_every (int, optional): number of iterations to print after, (default: 100)
     """
-    def __init__(self, expt_dir='experiment', loss=NLLLoss(), batch_size=64,
+    def __init__(self, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64,
                  random_seed=None,
                  checkpoint_every=100, print_every=100):
         self._trainer = "Simple Trainer"
@@ -34,8 +37,11 @@ class SupervisedTrainer(object):
         if random_seed is not None:
             random.seed(random_seed)
             torch.manual_seed(random_seed)
+        k = NLLLoss()
         self.loss = loss
-        self.evaluator = Evaluator(loss=self.loss, batch_size=batch_size)
+        self.metrics = metrics
+        self.loss_weights = loss_weights or len(loss)*[1.]
+        self.evaluator = Evaluator(loss=self.loss, metrics=self.metrics, batch_size=batch_size)
         self.optimizer = None
         self.checkpoint_every = checkpoint_every
         self.print_every = print_every
@@ -51,20 +57,21 @@ class SupervisedTrainer(object):
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_forcing_ratio):
         loss = self.loss
-        # Forward propagation
-        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable,
-                                                       teacher_forcing_ratio=teacher_forcing_ratio)
-        # Get loss
-        loss.reset()
-        for step, step_output in enumerate(decoder_outputs):
-            batch_size = target_variable.size(0)
-            loss.eval_batch(step_output.contiguous().view(batch_size, -1), target_variable[:, step + 1])
-        # Backward propagation
-        model.zero_grad()
-        loss.backward()
-        self.optimizer.step()
 
-        return loss.get_loss()
+        # Forward propagation
+        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable['decoder_output'],
+                                                       teacher_forcing_ratio=teacher_forcing_ratio)
+
+        losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+        
+        # Backward propagation
+        for i, loss in enumerate(losses, 0):
+            loss.scale_loss(self.loss_weights[i])
+            loss.backward()
+        self.optimizer.step()
+        model.zero_grad()
+
+        return losses[0].get_loss()
 
     def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
                        dev_data=None, teacher_forcing_ratio=0, top_k=5):
@@ -88,10 +95,13 @@ class SupervisedTrainer(object):
 
         # store initial model to be sure at least one model is stored
         eval_data = dev_data or data
-        loss, accuracy, seq_accuracy = self.evaluator.evaluate(model, eval_data)
-        loss_best = top_k*[loss]
+        losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
+
+        total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
+        print(log_msg)
+
+        loss_best = top_k*[total_loss]
         best_checkpoints = top_k*[None]
-        model_name = 'acc_%.2f_seq_acc_%.2f_ppl_%.2f_s%d' % (accuracy, seq_accuracy, loss, 0)
         best_checkpoints[0] = model_name
 
         Checkpoint(model=model,
@@ -114,9 +124,9 @@ class SupervisedTrainer(object):
             for batch in batch_generator:
                 step += 1
                 step_elapsed += 1
+                    
 
-                input_variables, input_lengths = getattr(batch, seq2seq.src_field_name)
-                target_variables = getattr(batch, seq2seq.tgt_field_name)
+                input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
                 loss = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
 
@@ -130,22 +140,23 @@ class SupervisedTrainer(object):
                     print_loss_total = 0
                     log_msg = 'Progress: %d%%, Train %s: %.4f' % (
                         step / total_steps * 100,
-                        self.loss.name,
+                        self.loss[0].name,
                         print_loss_avg)
                     log.info(log_msg)
 
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
-                    loss, accuracy, seq_accuracy = self.evaluator.evaluate(model, eval_data)
+                    losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
+                    total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
+
+
                     max_eval_loss = max(loss_best)
-                    if loss < max_eval_loss:
+                    if total_loss < max_eval_loss:
                             index_max = loss_best.index(max_eval_loss)
                             # rm prev model
                             if best_checkpoints[index_max] is not None:
                                 shutil.rmtree(os.path.join(self.expt_dir, best_checkpoints[index_max]))
-                            model_name = 'acc_%.2f_seq_acc_%.2f_ppl_%.2f_s%d' % (accuracy, seq_accuracy, loss, step)
-
                             best_checkpoints[index_max] = model_name
                             loss_best[index_max] = loss
 
@@ -160,14 +171,16 @@ class SupervisedTrainer(object):
 
             epoch_loss_avg = epoch_loss_total / min(steps_per_epoch, step - start_step)
             epoch_loss_total = 0
-            log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss.name, epoch_loss_avg)
+            log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss[0].name, epoch_loss_avg)
             if dev_data is not None:
-                dev_loss, accuracy, seq_accuracy = self.evaluator.evaluate(model, dev_data)
-                self.optimizer.update(dev_loss, epoch)
-                log_msg += ", Dev %s: %.4f, Accuracy: %.4f, Sequence Accuracy: %.4f" % (self.loss.name, dev_loss, accuracy, seq_accuracy)
+                losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data)
+                loss_total, log_, model_name = self.print_eval(losses, metrics, step)
+
+                self.optimizer.update(loss_total, epoch)    # TODO check if this makes sense!
+                log_msg += ", Dev set: " + log_
                 model.train(mode=True)
             else:
-                self.optimizer.update(epoch_loss_avg, epoch)
+                self.optimizer.update(epoch_loss_avg, epoch) # TODO check if this makes sense!
 
             log.info(log_msg)
 
@@ -229,3 +242,30 @@ class SupervisedTrainer(object):
                             teacher_forcing_ratio=teacher_forcing_ratio,
                             top_k=top_k)
         return model
+
+    @staticmethod
+    def get_batch_data(batch):
+        input_variables, input_lengths = getattr(batch, seq2seq.src_field_name)
+        target_variables = {'decoder_output': getattr(batch, seq2seq.tgt_field_name)}
+        return input_variables, input_lengths, target_variables
+
+    @staticmethod
+    def print_eval(losses, metrics, step):
+        total_loss = 0
+        model_name = ''
+        log_msg= ''
+
+        for metric in metrics:
+            val = metric.get_val()
+            log_msg += '%s %.4f ' % (metric.name, val)
+            model_name += '%s_%.2f_' % (metric.log_name, val)
+
+        for loss in losses:
+            val = loss.get_loss()
+            log_msg += '%s %.4f ' % (loss.name, val)
+            model_name += '%s_%.2f_' % (loss.log_name, val)
+            total_loss += val
+
+        model_name += 's%d' % step
+
+        return total_loss, log_msg, model_name

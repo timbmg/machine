@@ -10,6 +10,7 @@ from seq2seq.loss import Perplexity
 from seq2seq.dataset import SourceField, TargetField
 from seq2seq.evaluator import Evaluator
 from seq2seq.util.checkpoint import Checkpoint
+from seq2seq.trainer import SupervisedTrainer
 
 try:
     raw_input          # Python 2
@@ -68,7 +69,8 @@ if torch.cuda.is_available():
 # Evaluate model on test set
 
 evaluator = Evaluator(loss=loss, batch_size=opt.batch_size)
-loss, accuracy, seq_accuracy = evaluator.evaluate(seq2seq, test)
+losses, metrics = evaluator.evaluate(seq2seq, test)
 
-print("Loss: %f, Word accuracy: %f, Sequence accuracy: %f" % (loss, accuracy, seq_accuracy))
+total_loss, log_msg, _ = SupervisedTrainer.print_eval(losses, metrics, 0)
 
+print(log_msg)

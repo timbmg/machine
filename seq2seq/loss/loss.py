@@ -31,8 +31,11 @@ class Loss(object):
             sub-classes.
     """
 
-    def __init__(self, name, criterion):
+    def __init__(self, name, log_name, inputs, target, criterion):
         self.name = name
+        self.log_name = log_name
+        self.inputs = inputs
+        self.target = target
         self.criterion = criterion
         if not issubclass(type(self.criterion), nn.modules.loss._Loss):
             raise ValueError("Criterion has to be a subclass of torch.nn._Loss")
@@ -58,13 +61,34 @@ class Loss(object):
         """
         raise NotImplementedError
 
-    def eval_batch(self, outputs, target):
+    def eval_batch(self, decoder_outputs, other, target_variable):
         """ Evaluate and accumulate loss given outputs and expected results.
 
         This method is called after each batch with the batch outputs and
         the target (expected) results.  The loss and normalization term are
         accumulated in this method.  Override it to define your own accumulation
         method.
+
+        Args:
+            decoder_outputs (torch.Tensor): outputs of a batch.
+            other (dictionary): extra outputs of the model
+            target_variable (torch.Tensor): expected output of a batch.
+        """
+
+        if self.inputs == 'decoder_output':
+            outputs = decoder_outputs
+        else:
+            outputs = other[self.inputs]
+
+        targets = target_variable[self.target]
+
+        for step, step_output in enumerate(outputs):
+            target = targets[:, step + 1]
+            self.eval_step(step_output, target)
+
+    def eval_step(self, outputs, target):
+        """ Function called by eval batch to evaluate a timestep of the batch.
+        When called it updates self.acc_loss with the loss of the current step.
 
         Args:
             outputs (torch.Tensor): outputs of a batch.
@@ -75,33 +99,38 @@ class Loss(object):
     def cuda(self):
         self.criterion.cuda()
 
-    def backward(self):
+    def backward(self, retain_graph=False):
+        """ Backpropagate the computed loss.
+        """
         if type(self.acc_loss) is int:
             raise ValueError("No loss to back propagate.")
-        self.acc_loss.backward()
+        self.acc_loss.backward(retain_graph=retain_graph)
+
+    def scale_loss(self, factor):
+        """ Scale loss with a factor
+        """
+        self.acc_loss*=factor
 
 class NLLLoss(Loss):
     """ Batch averaged negative log-likelihood loss.
 
     Args:
-        weight (torch.Tensor, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
-        mask (int, optional): index of masked token, i.e. weight[mask] = 0.
+        ignore_index (int, optional): index of masked token
         size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
 
     _NAME = "Avg NLLLoss"
+    _SHORTNAME = "nll_loss"
+    _INPUTS = "decoder_output"
+    _TARGETS = "decoder_output"
 
-    def __init__(self, weight=None, mask=None, size_average=True):
-        self.mask = mask
+    def __init__(self, ignore_index=-1, size_average=True):
+        self.ignore_index = ignore_index
         self.size_average = size_average
-        if mask is not None:
-            if weight is None:
-                raise ValueError("Must provide weight with a mask.")
-            weight[mask] = 0
 
         super(NLLLoss, self).__init__(
-            self._NAME,
-            nn.NLLLoss(weight=weight, size_average=size_average))
+            self._NAME, self._SHORTNAME, self._INPUTS, self._TARGETS,
+            nn.NLLLoss(ignore_index=ignore_index, size_average=size_average))
 
     def get_loss(self):
         if isinstance(self.acc_loss, int):
@@ -113,7 +142,9 @@ class NLLLoss(Loss):
             loss /= self.norm_term
         return loss
 
-    def eval_batch(self, outputs, target):
+    def eval_step(self, step_outputs, target):
+        batch_size = target.size(0)
+        outputs = step_outputs.contiguous().view(batch_size, -1)
         self.acc_loss += self.criterion(outputs, target)
         self.norm_term += 1
 
@@ -124,22 +155,23 @@ class Perplexity(NLLLoss):
     same, it is the exponential of negative log-likelihood.
 
     Args:
-        weight (torch.Tensor, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
-        mask (int, optional): index of masked token, i.e. weight[mask] = 0.
+        ignore_index (int, optional): index to be masked, refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
 
     _NAME = "Perplexity"
+    _SHORTNAME = "ppl"
     _MAX_EXP = 100
+    _INPUTS = "decoder_output"
 
-    def __init__(self, weight=None, mask=None):
-        super(Perplexity, self).__init__(weight=weight, mask=mask, size_average=False)
+    def __init__(self, ignore_index=-100):
+        super(Perplexity, self).__init__(ignore_index=ignore_index, size_average=False)
 
-    def eval_batch(self, outputs, target):
+    def eval_step(self, outputs, target):
         self.acc_loss += self.criterion(outputs, target)
-        if self.mask is None:
+        if self.ignore_index is -100:
             self.norm_term += np.prod(target.size())
         else:
-            self.norm_term += target.data.ne(self.mask).sum()
+            self.norm_term += target.data.ne(self.ignore_index).sum()
 
     def get_loss(self):
         nll = super(Perplexity, self).get_loss()
