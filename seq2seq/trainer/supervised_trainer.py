@@ -9,6 +9,8 @@ import torch
 import torchtext
 from torch import optim
 
+from collections import defaultdict
+
 import seq2seq
 from seq2seq.evaluator import Evaluator
 from seq2seq.loss import NLLLoss
@@ -75,14 +77,16 @@ class SupervisedTrainer(object):
         self.optimizer.step()
         model.zero_grad()
 
-        return losses[0].get_loss()
+        return losses
 
     def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
                        dev_data=None, teacher_forcing_ratio=0, top_k=5):
         log = self.logger
 
-        print_loss_total = 0  # Reset every print_every
-        epoch_loss_total = 0  # Reset every epoch
+        print_loss_total = defaultdict(float)  # Reset every print_every
+        epoch_loss_total = defaultdict(float)  # Reset every epoch
+        epoch_loss_avg = defaultdict(float)
+        print_loss_avg = defaultdict(float)
 
         device = None if torch.cuda.is_available() else -1
         batch_iterator = torchtext.data.BucketIterator(
@@ -101,8 +105,7 @@ class SupervisedTrainer(object):
         eval_data = dev_data or data
         losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
 
-        total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
-        print(log_msg)
+        total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
         loss_best = top_k*[total_loss]
         best_checkpoints = top_k*[None]
@@ -132,27 +135,36 @@ class SupervisedTrainer(object):
 
                 input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
-                loss = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
+                losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
 
                 # Record average loss
-                print_loss_total += loss
-                epoch_loss_total += loss
+                for loss in losses:
+                    name = loss.log_name
+                    print_loss_total[name] += loss.get_loss()
+                    epoch_loss_total[name] += loss.get_loss()
+
+                # print_loss_total += loss TODO remove line
+                # epoch_loss_total += loss TODO remove line
 
                 # print log info according to print_every parm
                 if step % self.print_every == 0 and step_elapsed > self.print_every:
-                    print_loss_avg = print_loss_total / self.print_every
-                    print_loss_total = 0
-                    log_msg = 'Progress: %d%%, Train %s: %.4f' % (
+                    for loss in losses:
+                        name = loss.log_name
+                        print_loss_avg[name] = print_loss_total[name] / self.print_every
+                        print_loss_total[name] = 0
+
+                    loss_msg = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
+
+                    log_msg = 'Progress: %d%%, Train %s' % (
                         step / total_steps * 100,
-                        self.loss[0].name,
-                        print_loss_avg)
+                        loss_msg)
                     log.info(log_msg)
 
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
                     losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
-                    total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
+                    total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
 
                     max_eval_loss = max(loss_best)
@@ -173,18 +185,22 @@ class SupervisedTrainer(object):
 
             if step_elapsed == 0: continue
 
-            epoch_loss_avg = epoch_loss_total / min(steps_per_epoch, step - start_step)
-            epoch_loss_total = 0
-            log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss[0].name, epoch_loss_avg)
+            for loss in losses:
+                epoch_loss_avg[loss.log_name] = epoch_loss_total[loss.log_name] / min(steps_per_epoch, step - start_step)
+                epoch_loss_total[loss.log_name] = 0
+
+            loss_msg = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
+            log_msg = "Finished epoch %d: Train %s" % (epoch, loss_msg)
+
             if dev_data is not None:
                 losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data)
-                loss_total, log_, model_name = self.print_eval(losses, metrics, step)
+                loss_total, log_, model_name = self.get_losses(losses, metrics, step)
 
-                self.optimizer.update(loss_total, epoch)    # TODO check if this makes sense!
-                log_msg += ", Dev set: " + log_
+                self.optimizer.update(loss_total, epoch)
+                log_msg += ", Dev " + log_
                 model.train(mode=True)
             else:
-                self.optimizer.update(epoch_loss_avg, epoch) # TODO check if this makes sense!
+                self.optimizer.update(sum(epoch_loss_avg.values()), epoch) # TODO check if this makes sense!
 
             log.info(log_msg)
 
@@ -254,7 +270,7 @@ class SupervisedTrainer(object):
         return input_variables, input_lengths, target_variables
 
     @staticmethod
-    def print_eval(losses, metrics, step):
+    def get_losses(losses, metrics, step):
         total_loss = 0
         model_name = ''
         log_msg= ''
