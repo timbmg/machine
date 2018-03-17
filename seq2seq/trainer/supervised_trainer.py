@@ -65,9 +65,13 @@ class SupervisedTrainer(object):
         losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
         
         # Backward propagation
-        for i, loss in enumerate(losses, 0):
+        for i, loss in enumerate(losses[:-1], 0):
             loss.scale_loss(self.loss_weights[i])
-            loss.backward()
+            loss.backward(retain_graph=True)
+
+        losses[-1].scale_loss(self.loss_weights[-1])
+        losses[-1].backward()
+
         self.optimizer.step()
         model.zero_grad()
 
