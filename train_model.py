@@ -41,6 +41,7 @@ parser.add_argument('--teacher_forcing_ratio', type=float, help='Teacher forcing
 parser.add_argument('--attention', choices=['pre-rnn', 'post-rnn'], default=False)
 parser.add_argument('--attention_method', choices=['dot', 'mlp'], default=None)
 parser.add_argument('--batch_size', type=int, help='Batch size', default=32)
+parser.add_argument('--eval_batch_size', type=int, help='Batch size', default=128)
 parser.add_argument('--lr', type=float, help='Learning rate, recommended settings.\nrecommended settings: adam=0.001 adadelta=1.0 adamax=0.002 rmsprop=0.01 sgd=0.1', default=0.001)
 
 parser.add_argument('--load_checkpoint', help='The name of the checkpoint to load, usually an encoded time string')
@@ -169,6 +170,7 @@ if torch.cuda.is_available():
 t = SupervisedTrainer(loss=loss, metrics=metrics, 
                       loss_weights=loss_weights,
                       batch_size=opt.batch_size,
+                      eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
 
