@@ -5,11 +5,11 @@ DEV_PATH=data/lookup/unseen.csv
 EXPT_DIR=example
 
 # use small parameters for quicker testing
-EMB_SIZE=300
-H_SIZE=300
+EMB_SIZE=30
+H_SIZE=30
 CELL2='lstm'
 CELL='gru'
-EPOCH=500
+EPOCH=1
 CP_EVERY=3000
 
 EX=0

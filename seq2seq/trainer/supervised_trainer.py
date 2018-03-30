@@ -44,6 +44,7 @@ class SupervisedTrainer(object):
         self.loss_weights = loss_weights or len(loss)*[1.]
         self.evaluator = Evaluator(loss=self.loss, metrics=self.metrics, batch_size=eval_batch_size)
         self.optimizer = None
+        self.teacher_optimizer = None
         self.checkpoint_every = checkpoint_every
         self.print_every = print_every
 
@@ -71,8 +72,36 @@ class SupervisedTrainer(object):
             decoder_targets = self.ponderer.mask_silent_targets(input_variable, input_lengths, target_variable['decoder_output'])
             target_variable['decoder_output'] = decoder_targets
 
-        losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+        # Add target attentions to target_variable.
+        # TODO: What will happen if --use_attention_loss is also set to True. Will this get overwritten in get_batch_data?
+        # TODO: Should this functionality be in get_batch_data?
+        # TODO: Or do we even still need get_batch_data? Maybe everything can just be done here?
+        # TODO: Replace this with teacher.get_actions (and call finish_episode?)
         
+        if teacher_optimizer:
+            max_val = max(input_lengths) + 1
+            batch_size = input_lengths.size(0)
+            target_attentions = Variable(torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), self.pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long())
+            if torch.cuda.is_available():
+                target_attentions = target_attentions.cuda()
+            target_variable['attention_target'] = target_attentions
+
+            # TODO: Calculate actual reward
+            teacher_model.rewards.append(0)
+            teacher_model.rewards.append(0)
+            teacher_model.rewards.append(1)
+
+            # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
+            policy_loss = teacher_model.finish_episode()
+
+            teacher_optimizer.zero_grad()
+            policy_loss.backward()
+            teacher_optimizer.step()
+        else:
+            print("No teacher optimzer")
+
+        losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+
         # Backward propagation
         for i, loss in enumerate(losses, 0):
             loss.scale_loss(self.loss_weights[i])
@@ -113,6 +142,7 @@ class SupervisedTrainer(object):
         best_checkpoints = top_k*[None]
         best_checkpoints[0] = model_name
 
+        # TODO: Add teacher_optimzer
         Checkpoint(model=model,
                    optimizer=self.optimizer,
                    epoch=start_epoch, step=start_step,
@@ -170,6 +200,7 @@ class SupervisedTrainer(object):
                             loss_best[index_max] = total_loss
 
                             # save model
+                            # TODO: Add teacher_optimzer
                             Checkpoint(model=model,
                                        optimizer=self.optimizer,
                                        epoch=epoch, step=step,
@@ -185,15 +216,17 @@ class SupervisedTrainer(object):
                 losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data, ponderer=self.ponderer)
                 loss_total, log_, model_name = self.print_eval(losses, metrics, step)
 
+                # TODO: Add teacher_optimzer? 
                 self.optimizer.update(loss_total, epoch)    # TODO check if this makes sense!
                 log_msg += ", Dev set: " + log_
                 model.train(mode=True)
             else:
+                # TODO: Add teacher optimzer?
                 self.optimizer.update(epoch_loss_avg, epoch) # TODO check if this makes sense!
 
             log.info(log_msg)
 
-    def train(self, model, data, ponderer=None, num_epochs=5,
+    def train(self, model, data, teacher_model=None, ponderer=None, num_epochs=5,
               resume=False, dev_data=None, optimizer=None,
               teacher_forcing_ratio=0,
               learning_rate=0.001, checkpoint_path=None, top_k=5):
@@ -227,6 +260,7 @@ class SupervisedTrainer(object):
             defaults.pop('params', None)
             defaults.pop('initial_lr', None)
             self.optimizer.optimizer = resume_optim.__class__(model.parameters(), **defaults)
+            # TODO: How to init teacher_optimizer?
 
             start_epoch = resume_checkpoint.epoch
             step = resume_checkpoint.step
@@ -243,9 +277,14 @@ class SupervisedTrainer(object):
 
             self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),
                                        max_grad_norm=5)
+            # TODO: Should not be hard-coded
+            self.teacher_optimizer = torch.optim.SGD(teacher_model.parameters(), lr=0.001)
+
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
-
+        # TODO: Should we also use container Optimzer class?
+        # if self.teacher_optimizer:
+        #     self.logger.info("Teacher optimizer: %s, scheduler: %s" % (self.teacher_optimizer.optimizer, self.teacher_optimizer.scheduler))
         self.ponderer = ponderer
 
         self._train_epoches(data, model, num_epochs,

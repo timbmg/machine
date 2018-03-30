@@ -10,7 +10,7 @@ import random
 
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer, LookupTableAttention, AttentionTrainer, LookupTablePonderer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
+from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, Teacher
 from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy
 from seq2seq.optim import Optimizer
@@ -159,6 +159,19 @@ else:
 input_vocabulary = input_vocab.itos
 output_vocabulary = output_vocab.itos
 
+#################################
+##### PREPARE Teacher MODEL #####
+#################################
+teacher_model = Teacher(
+    input_vocab_size=len(src.vocab),
+    embedding_dim=40,
+    hidden_dim=40,
+    output_vocab_size=max_len,
+    gamma=0.99)
+if torch.cuda.is_available():
+  teacher_model.cuda()
+# TODO: Make sure we set to train() and eval() correctly
+
 # random.seed(3)
 
 # print "Input vocabulary:"
@@ -198,39 +211,20 @@ if opt.use_attention_loss:
     attention_function = LookupTableAttention(input_eos_used=opt.use_input_eos, pad_value=IGNORE_INDEX)
 
 # create trainer
-if not opt.use_attention_loss:
-    t = SupervisedTrainer(loss=loss, metrics=metrics, 
-                          loss_weights=loss_weights,
-                          batch_size=opt.batch_size,
-                          eval_batch_size=opt.eval_batch_size,
-                          checkpoint_every=opt.save_every,
-                          print_every=opt.print_every, expt_dir=opt.output_dir)
+t = SupervisedTrainer(loss=loss, metrics=metrics, 
+                      loss_weights=loss_weights,
+                      batch_size=opt.batch_size,
+                      eval_batch_size=opt.eval_batch_size,
+                      checkpoint_every=opt.save_every,
+                      print_every=opt.print_every, expt_dir=opt.output_dir)
 
-    seq2seq = t.train(seq2seq, train, 
-                      num_epochs=opt.epochs, dev_data=dev,
-                      ponderer=ponderer,
-                      optimizer=opt.optim,
-                      teacher_forcing_ratio=opt.teacher_forcing_ratio,
-                      learning_rate=opt.lr,
-                      resume=opt.resume,
-                      checkpoint_path=checkpoint_path)
-else:
-    t = AttentionTrainer(loss=loss, metrics=metrics, 
-                          loss_weights=loss_weights,
-                          batch_size=opt.batch_size,
-                          eval_batch_size=opt.eval_batch_size,
-                          checkpoint_every=opt.save_every,
-                          print_every=opt.print_every, expt_dir=opt.output_dir)
-
-    seq2seq = t.train(seq2seq, train, 
-                      num_epochs=opt.epochs, dev_data=dev,
-                      attention_function=attention_function,
-                      ponderer=ponderer,
-                      optimizer=opt.optim,
-                      teacher_forcing_ratio=opt.teacher_forcing_ratio,
-                      learning_rate=opt.lr,
-                      resume=opt.resume,
-                      checkpoint_path=checkpoint_path)
-
-# evaluator = Evaluator(loss=loss, batch_size=opt.batch_size)
-# dev_loss, accuracy = evaluator.evaluate(seq2seq, dev)
+seq2seq = t.train(model=seq2seq,
+                  teacher_model=teacher_model,
+                  data=train, 
+                  num_epochs=opt.epochs, dev_data=dev,
+                  ponderer=ponderer,
+                  optimizer=opt.optim,
+                  teacher_forcing_ratio=opt.teacher_forcing_ratio,
+                  learning_rate=opt.lr,
+                  resume=opt.resume,
+                  checkpoint_path=checkpoint_path)
