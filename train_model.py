@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
+from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, Teacher
 from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
@@ -189,6 +189,19 @@ else:
 input_vocabulary = input_vocab.itos
 output_vocabulary = output_vocab.itos
 
+#################################
+##### PREPARE Teacher MODEL #####
+#################################
+teacher_model = Teacher(
+    input_vocab_size=len(src.vocab),
+    embedding_dim=40,
+    hidden_dim=40,
+    output_vocab_size=max_len,
+    gamma=0.99)
+if torch.cuda.is_available():
+  teacher_model.cuda()
+# TODO: Make sure we set to train() and eval() correctly
+
 # random.seed(3)
 
 # print "Input vocabulary:"
@@ -243,9 +256,12 @@ t = SupervisedTrainer(loss=losses, metrics=metrics,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
 
-seq2seq, logs = t.train(seq2seq, train, 
-                  num_epochs=opt.epochs, dev_data=dev,
+seq2seq, logs = t.train(model=seq2seq,
+                  teacher_model=teacher_model,
+                  data=train,
                   monitor_data=monitor_data,
+                  num_epochs=opt.epochs, dev_data=dev,
+                  ponderer=ponderer,
                   optimizer=opt.optim,
                   teacher_forcing_ratio=opt.teacher_forcing_ratio,
                   learning_rate=opt.lr,
