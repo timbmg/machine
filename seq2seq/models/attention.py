@@ -52,7 +52,7 @@ class Attention(nn.Module):
         """
         self.mask = mask
 
-    def forward(self, decoder_states, encoder_states):
+    def forward(self, decoder_states, encoder_states, step):
 
         batch_size = decoder_states.size(0)
         decoder_states_size = decoder_states.size(2)
@@ -62,7 +62,7 @@ class Attention(nn.Module):
         mask = encoder_states.eq(0.)[:,:,:1].transpose(1,2).data
 
         # compute attention vals
-        attn = self.method(decoder_states, encoder_states)
+        attn = self.method(decoder_states, encoder_states, step)
         attn_before = attn.data.clone()
 
         if self.mask is not None:
@@ -88,6 +88,8 @@ class Attention(nn.Module):
             method = Concat(dim)
         elif method == 'dot':
             method = Dot()
+        elif method == 'hard':
+            method = HardCoded()
         else:
             return ValueError("Unknown attention method")
 
@@ -104,7 +106,7 @@ class Concat(nn.Module):
         super(Concat, self).__init__()
         self.mlp = nn.Linear(dim*2, 1)
 
-    def forward(self, decoder_states, encoder_states):
+    def forward(self, decoder_states, encoder_states, step):
         # apply mlp to all encoder states for current decoder
 
         # decoder_states --> (batch, dec_seqlen, hl_size)
@@ -138,7 +140,7 @@ class Dot(nn.Module):
     def __init__(self):
         super(Dot, self).__init__()
 
-    def forward(self, decoder_states, encoder_states):
+    def forward(self, decoder_states, encoder_states, step):
         attn = torch.bmm(decoder_states, encoder_states.transpose(1, 2))
         return attn
 
@@ -150,7 +152,7 @@ class MLP(nn.Module):
         self.activation = nn.ReLU()
         self.out = nn.Linear(dim, 1)
 
-    def forward(self, decoder_states, encoder_states):
+    def forward(self, decoder_states, encoder_states, step):
         # apply mlp to all encoder states for current decoder
 
         # decoder_states --> (batch, dec_seqlen, hl_size)
@@ -178,5 +180,69 @@ class MLP(nn.Module):
         mlp_output = self.activation(mlp_output)
         out = self.out(mlp_output)
         attn = out.view(batch_size, dec_seqlen, enc_seqlen)
+
+        return attn
+
+
+class HardCoded(nn.Module):
+
+    """
+    Hardcoded attention guidance module for the lookup table task (diagonal attentive guidance)
+    """
+
+    def forward(self, decoder_states, encoder_states, step):
+        """
+        Forward pass method. Computes the hard-coded, non-differentiable attentive guidance for
+        the lookup tables task. Or any other task that requires a diagonal attentive guidance pattern.
+        
+        Args:
+            decoder_states (torch.autograd.Variable): Variable containing one or multiple decoder hidden states (batch_size X dec_seqlen X hidden_size)
+            encoder_states (torch.autograd.Variable): Variable containing all encoder hidden states (batch_size X enc_seqlen X hidden_size)
+            step (int): Current step of the decoder. Set to -1 if the decoder is not unrolled.
+        
+        Returns:
+            attn: The attention distribution over the encoder states for each of the provided decoder states (batch_size X dec_seqlen X enc_seqlen)
+        """
+        
+        # decoder_states --> (batch, dec_seqlen, hl_size)
+        # encoder_states --> (batch, enc_seqlen, hl_size)
+        batch_size, enc_seqlen, hl_size = encoder_states.size()
+        _, dec_seqlen, _                = decoder_states.size()
+
+        # Add hard-coded attention vector for all decoder steps
+        if step == -1:
+            # Initialize all-zero attention vectors
+            attn = torch.zeros(batch_size, dec_seqlen, enc_seqlen)
+
+            # In inference mode, we have more decoder steps than encoder steps. These extra steps
+            # are ignored when calculating losses and metrics. For the first 'enc_seqlen' decoder steps
+            # we generate the diagonal attentive guidance. For all possible steps after that, we just attend to the first encoder state.
+            indices = torch.cat((
+                torch.arange(enc_seqlen).view(1, enc_seqlen, 1),
+                torch.zeros(1, dec_seqlen - enc_seqlen, 1)), dim=1)
+            indices = indices.expand(batch_size, dec_seqlen, 1).long()
+
+            # Fill the attention guidance with 1's
+            attn = attn.scatter_(dim=2, index=indices, value=1)
+
+        # Add hard-coded attention vector for only one single unrolled decoder step
+        else:
+            # Step should only be passed if we are truly unrolling the decoder and processing it
+            # one step at a time.
+            assert dec_seqlen == 1, "Decoder must be unrolled if 'step' is passed"
+
+            # Initialize all-zero attention vectors
+            attn = torch.zeros(batch_size, 1, enc_seqlen)
+
+            # In inference mode, we will have to calculate attention vectors for decoding steps
+            # longer than the input length. This will not be included in the calculation of metric and losses
+            # We just return all-zero attention vectors
+            if step < enc_seqlen:
+                # Fill the attention vectors with a 1 at the specified indices/step
+                indices = step * torch.ones(batch_size, 1, 1).long()
+                attn = attn.scatter_(dim=2, index=indices, value=1)
+
+        # Convert into non-grad Variable
+        attn = torch.autograd.Variable(attn, requires_grad=False)
 
         return attn
