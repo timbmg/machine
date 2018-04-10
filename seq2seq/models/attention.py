@@ -211,8 +211,8 @@ class HardCoded(nn.Module):
 
         # Add hard-coded attention vector for all decoder steps
         if step == -1:
-            # Initialize all-zero attention vectors
-            attn = torch.zeros(batch_size, dec_seqlen, enc_seqlen)
+            # Initialize attention vectors. These are the pre-softmax scores, so any -inf will become 0 (if there is at least value not -inf)
+            attn = torch.zeros(batch_size, dec_seqlen, enc_seqlen).fill_(-float('inf'))
 
             # In inference mode, we have more decoder steps than encoder steps. These extra steps
             # are ignored when calculating losses and metrics. For the first 'enc_seqlen' decoder steps
@@ -231,8 +231,8 @@ class HardCoded(nn.Module):
             # one step at a time.
             assert dec_seqlen == 1, "Decoder must be unrolled if 'step' is passed"
 
-            # Initialize all-zero attention vectors
-            attn = torch.zeros(batch_size, 1, enc_seqlen)
+            # Initialize attention vectors. These are the pre-softmax scores, so any -inf will become 0 (if there is at least value not -inf)
+            attn = torch.zeros(batch_size, 1, enc_seqlen).fill_(-float('inf'))
 
             # In inference mode, we will have to calculate attention vectors for decoding steps
             # longer than the input length. This will not be included in the calculation of metric and losses
