@@ -217,9 +217,12 @@ class HardCoded(nn.Module):
             # In inference mode, we have more decoder steps than encoder steps. These extra steps
             # are ignored when calculating losses and metrics. For the first 'enc_seqlen' decoder steps
             # we generate the diagonal attentive guidance. For all possible steps after that, we just attend to the first encoder state.
-            indices = torch.cat((
-                torch.arange(enc_seqlen).view(1, enc_seqlen, 1),
+            indices = torch.arange(enc_seqlen).view(1, enc_seqlen, 1)
+            if dec_seqlen > enc_seqlen:
+                indices = torch.cat((
+                indices,
                 torch.zeros(1, dec_seqlen - enc_seqlen, 1)), dim=1)
+
             indices = indices.expand(batch_size, dec_seqlen, 1).long()
 
             # Fill the attention guidance with 1's
