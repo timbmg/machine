@@ -214,14 +214,17 @@ class HardCoded(nn.Module):
             # Initialize attention vectors. These are the pre-softmax scores, so any -inf will become 0 (if there is at least value not -inf)
             attn = torch.zeros(batch_size, dec_seqlen, enc_seqlen).fill_(-float('inf'))
 
-            # In inference mode, we have more decoder steps than encoder steps. These extra steps
-            # are ignored when calculating losses and metrics. For the first 'enc_seqlen' decoder steps
-            # we generate the diagonal attentive guidance. For all possible steps after that, we just attend to the first encoder state.
+            # For decoder step 'step' we will attend to encoder step 'step'. So we generate a diagonal attentive guidance matrix with torch.arange
+            # However, if the decoder EOS is present, and the input EOS is not, the decoder will be longer than the encoder.
+            # In this case, we will attend the output EOS to the last input token.
+            # When doing inference, the decoder will be run for max_len (50) and is often much longer than the encoder. In
+            # this case we will also attend these extra decoder steps to the encoders last state. However, these should be ignored for calculating
+            # the loss and metrics.
             indices = torch.arange(enc_seqlen).view(1, enc_seqlen, 1)
             if dec_seqlen > enc_seqlen:
                 indices = torch.cat((
                 indices,
-                torch.zeros(1, dec_seqlen - enc_seqlen, 1)), dim=1)
+                (enc_seqlen-1) * torch.ones(1, dec_seqlen - enc_seqlen, 1)), dim=1)
 
             indices = indices.expand(batch_size, dec_seqlen, 1).long()
 
@@ -237,13 +240,19 @@ class HardCoded(nn.Module):
             # Initialize attention vectors. These are the pre-softmax scores, so any -inf will become 0 (if there is at least value not -inf)
             attn = torch.zeros(batch_size, 1, enc_seqlen).fill_(-float('inf'))
 
-            # In inference mode, we will have to calculate attention vectors for decoding steps
-            # longer than the input length. This will not be included in the calculation of metric and losses
-            # We just return all-zero attention vectors
+            # For decoder step 'step' we will attend to encoder step 'step'.
+            # However, if the decoder EOS is present, and the input EOS is not, the decoder will be longer than the encoder.
+            # In this case, we will attend the output EOS to the last input token.
+            # When doing inference, the decoder will be run for max_len (50) and is often much longer than the encoder. In
+            # this case we will also attend these extra decoder steps to the encoders last state. However, these should be ignored for calculating
+            # the loss and metrics.
             if step < enc_seqlen:
                 # Fill the attention vectors with a 1 at the specified indices/step
                 indices = step * torch.ones(batch_size, 1, 1).long()
-                attn = attn.scatter_(dim=2, index=indices, value=1)
+            else:
+                indices = (enc_seqlen-1) * torch.ones(batch_size, 1, 1).long()
+
+            attn = attn.scatter_(dim=2, index=indices, value=1)
 
         # Convert into non-grad Variable
         attn = torch.autograd.Variable(attn, requires_grad=False)
