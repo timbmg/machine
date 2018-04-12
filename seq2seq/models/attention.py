@@ -52,7 +52,7 @@ class Attention(nn.Module):
         """
         self.mask = mask
 
-    def forward(self, decoder_states, encoder_states, step):
+    def forward(self, decoder_states, encoder_states, **kwargs):
 
         batch_size = decoder_states.size(0)
         decoder_states_size = decoder_states.size(2)
@@ -61,8 +61,12 @@ class Attention(nn.Module):
         # compute mask
         mask = encoder_states.eq(0.)[:,:,:1].transpose(1,2).data
 
-        # compute attention vals
-        attn = self.method(decoder_states, encoder_states, step)
+        # Compute pre-softmax attention scores. Pass on through kwargs when provided
+        if kwargs:
+            attn = self.method(decoder_states, encoder_states, **kwargs)
+        else:
+            attn = self.method(decoder_states, encoder_states)
+
         attn_before = attn.data.clone()
 
         if self.mask is not None:
@@ -106,7 +110,7 @@ class Concat(nn.Module):
         super(Concat, self).__init__()
         self.mlp = nn.Linear(dim*2, 1)
 
-    def forward(self, decoder_states, encoder_states, step):
+    def forward(self, decoder_states, encoder_states):
         # apply mlp to all encoder states for current decoder
 
         # decoder_states --> (batch, dec_seqlen, hl_size)
@@ -140,7 +144,7 @@ class Dot(nn.Module):
     def __init__(self):
         super(Dot, self).__init__()
 
-    def forward(self, decoder_states, encoder_states, step):
+    def forward(self, decoder_states, encoder_states):
         attn = torch.bmm(decoder_states, encoder_states.transpose(1, 2))
         return attn
 
@@ -152,7 +156,7 @@ class MLP(nn.Module):
         self.activation = nn.ReLU()
         self.out = nn.Linear(dim, 1)
 
-    def forward(self, decoder_states, encoder_states, step):
+    def forward(self, decoder_states, encoder_states):
         # apply mlp to all encoder states for current decoder
 
         # decoder_states --> (batch, dec_seqlen, hl_size)
@@ -190,7 +194,7 @@ class HardCoded(nn.Module):
     Hardcoded attention guidance module for the lookup table task (diagonal attentive guidance)
     """
 
-    def forward(self, decoder_states, encoder_states, step):
+    def forward(self, decoder_states, encoder_states, **kwargs):
         """
         Forward pass method. Computes the hard-coded, non-differentiable attentive guidance for
         the lookup tables task. Or any other task that requires a diagonal attentive guidance pattern.
@@ -203,6 +207,7 @@ class HardCoded(nn.Module):
         Returns:
             attn: The attention distribution over the encoder states for each of the provided decoder states (batch_size X dec_seqlen X enc_seqlen)
         """
+        step = kwargs['step']
         
         # decoder_states --> (batch, dec_seqlen, hl_size)
         # encoder_states --> (batch, enc_seqlen, hl_size)

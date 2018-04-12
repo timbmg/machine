@@ -127,15 +127,23 @@ class DecoderRNN(BaseRNN):
 
         if self.use_attention == 'pre-rnn':
             h = hidden
-            if isinstance(hidden, tuple):
+            if isinstance(hidden, tuple): # for GRU hidden=h, for LSTM (h, c)
                 h, c = hidden
-            context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, step) # transpose to get batch at the second index
+            # Apply the attention method to get the attention vector and weighted context vector. Provide decoder step for hardcoded attention
+            if self.attention_method == 'hard':
+                context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, step=step) # transpose to get batch at the second index
+            else:
+                context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs) # transpose to get batch at the second index
             combined_input = torch.cat((context, embedded), dim=2)
             output, hidden = self.rnn(combined_input, hidden)
 
         elif self.use_attention == 'post-rnn':
-            output, hidden = self.rnn(embedded, hidden) # for GRU hidden=h, for LSTM (h, c)
-            context, attn = self.attention(output, encoder_outputs, step)
+            output, hidden = self.rnn(embedded, hidden)
+            # Apply the attention method to get the attention vector and weighted context vector. Provide decoder step for hardcoded attention
+            if self.attention_method == 'hard':
+                context, attn = self.attention(output, encoder_outputs, step=step)
+            else:
+                context, attn = self.attention(output, encoder_outputs)
             output = torch.cat((context, output), dim=2)
 
         elif not self.use_attention:
