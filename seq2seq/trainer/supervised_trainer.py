@@ -8,6 +8,7 @@ import shutil
 import torch
 import torchtext
 from torch import optim
+from torch.autograd import Variable
 
 from collections import defaultdict
 
@@ -59,7 +60,7 @@ class SupervisedTrainer(object):
 
         self.logger = logging.getLogger(__name__)
 
-    def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_forcing_ratio):
+    def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_model, teacher_forcing_ratio):
         loss = self.loss
 
         # Forward propagation
@@ -71,25 +72,42 @@ class SupervisedTrainer(object):
         # TODO: Or do we even still need get_batch_data? Maybe everything can just be done here?
         # TODO: Replace this with teacher.get_actions (and call finish_episode?)
         
-        if teacher_optimizer:
-            max_val = max(input_lengths) + 1
-            batch_size = input_lengths.size(0)
-            target_attentions = Variable(torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), self.pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long())
-            if torch.cuda.is_available():
-                target_attentions = target_attentions.cuda()
-            target_variable['attention_target'] = target_attentions
+        if self.teacher_optimizer:
+            # pad_value = -1
+            # max_val = max(input_lengths) + 1
+            # batch_size = input_lengths.size(0)
+            # target_attentions = Variable(torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long())
+            # if torch.cuda.is_available():
+            #     target_attentions = target_attentions.cuda()
+            # target_variable['attention_target'] = target_attentions
+
+            actions = teacher_model.select_actions(input_variable)
 
             # TODO: Calculate actual reward
-            teacher_model.rewards.append(0)
-            teacher_model.rewards.append(0)
-            teacher_model.rewards.append(1)
+            if actions[0] == 9:
+                teacher_model.rewards.append(1)
+            else:
+                teacher_model.rewards.append(0)
+
+            if actions[1] == 6:
+                teacher_model.rewards.append(1)
+            else:
+                teacher_model.rewards.append(0)
+
+            if len(actions) == 3 and actions[2] == 2:
+                teacher_model.rewards.append(1)
+            elif len(actions) == 3:
+                teacher_model.rewards.append(0)
+
+            print(actions)
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
 
-            teacher_optimizer.zero_grad()
+            self.teacher_optimizer.zero_grad()
             policy_loss.backward()
-            teacher_optimizer.step()
+            self.teacher_optimizer.step()
+
         else:
             print("No teacher optimzer")
 
@@ -104,9 +122,8 @@ class SupervisedTrainer(object):
 
         return losses
 
-    def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
-                       dev_data=None, monitor_data=[], teacher_forcing_ratio=0,
-                       top_k=5):
+    def _train_epoches(self, data, model, teacher_model, n_epochs, start_epoch, start_step,
+                       dev_data=None, monitor_data=[], teacher_forcing_ratio=0, top_k=5):
         log = self.logger
 
         print_loss_total = defaultdict(float)  # Reset every print_every
@@ -163,7 +180,7 @@ class SupervisedTrainer(object):
 
                 input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
-                losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
+                losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_model, teacher_forcing_ratio)
 
                 # Record average loss
                 for loss in losses:
@@ -301,14 +318,14 @@ class SupervisedTrainer(object):
             self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),
                                        max_grad_norm=5)
             # TODO: Should not be hard-coded
-            self.teacher_optimizer = torch.optim.SGD(teacher_model.parameters(), lr=0.001)
+            self.teacher_optimizer = torch.optim.Adam(teacher_model.parameters(), lr=0.001)
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
         # TODO: Should we also use container Optimzer class?
         # if self.teacher_optimizer:
         #     self.logger.info("Teacher optimizer: %s, scheduler: %s" % (self.teacher_optimizer.optimizer, self.teacher_optimizer.scheduler))
 
-        logs = self._train_epoches(data, model, num_epochs,
+        logs = self._train_epoches(data, model, teacher_model, num_epochs,
                             start_epoch, step, dev_data=dev_data,
                             monitor_data=monitor_data,
                             teacher_forcing_ratio=teacher_forcing_ratio,

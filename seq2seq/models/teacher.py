@@ -50,17 +50,14 @@ class Teacher(nn.Module):
         self.gamma = gamma
 
         self.input_embedding = nn.Embedding(input_vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.linear_output = nn.Linear(hidden_dim, output_vocab_size)
-
-        self.hidden = self.init_hidden()
 
         self.saved_log_probs = []
         self.rewards = []
 
-    # TODO: Is this optimized or a constant? I think it is optimized, but
-    # reset everytime we call __init__
-    # It is also reset by the training loop..
+    # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method. 
+    # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
     def init_hidden(self):
         """
         Summary
@@ -72,8 +69,8 @@ class Teacher(nn.Module):
         # Refer to the Pytorch documentation to see exactly
         # why they have this dimensionality.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
-                torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
+        self.hidden = (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
+                       torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
 
     def forward(self, state):
         """
@@ -86,16 +83,13 @@ class Teacher(nn.Module):
             TYPE: Description
         """
         input_embedding = self.input_embedding(state)
-        input_embedding = input_embedding.view(len(state), 1, -1)
 
         # TODO: Make sure that the entire input is processed, and only after that
-        # the attention vectors are calculated
-
+        # the attention vectors are calculated (seq2seq)
         lstm_out, self.hidden = self.lstm(input_embedding, self.hidden)
-        lstm_out = lstm_out.view(len(state), -1)
 
         action_scores = self.linear_output(lstm_out)
-        actions_probs = F.softmax(action_scores, dim=1)
+        actions_probs = F.softmax(action_scores, dim=2)
 
         return actions_probs
 
@@ -109,13 +103,25 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
-        probs = self.forward(state)
-        cat_dist = Categorical(probs)
-        actions = cat_dist.sample()
-        print(probs)
-        self.saved_log_probs = cat_dist.log_prob(actions)
+        self.init_hidden()
+        probabilities = self.forward(state)
 
-        actions = actions.data
+        actions = []
+        decoder_sequence_length = probabilities.size(1)
+        for decoder_step in range(decoder_sequence_length):
+            probabilities_current_step = probabilities[:, decoder_step, :]
+            categorical_distribution = Categorical(probabilities_current_step)
+
+            import random
+            sample = random.random()
+            eps_threshold = 0.9
+            if sample > eps_threshold:
+                action = torch.autograd.Variable(torch.LongTensor([random.randrange(self.output_vocab_size)]))
+            else:
+                action = categorical_distribution.sample()
+
+            self.saved_log_probs.append(categorical_distribution.log_prob(action))
+            actions.append(action.data[0])
 
         return actions
 
@@ -128,6 +134,10 @@ class Teacher(nn.Module):
             TYPE: Description
         """
         # Calculate discounted reward of entire episode
+
+        # We must have a reward for every action
+        assert len(self.rewards) == len(self.saved_log_probs), "Number of rewards ({}) must equal number of actions ({})".format(len(self.rewards), len(self.saved_log_probs))
+
         R = 0
         discounted_rewards = []
         for r in self.rewards[::-1]:
@@ -146,6 +156,6 @@ class Teacher(nn.Module):
 
         # Reset episode
         del self.rewards[:]
-        del self.saved_log_probs
+        del self.saved_log_probs[:]
 
         return policy_loss

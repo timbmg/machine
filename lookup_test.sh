@@ -9,7 +9,7 @@ EMB_SIZE=30
 H_SIZE=30
 CELL2='lstm'
 CELL='gru'
-EPOCH=1
+EPOCH=20
 CP_EVERY=3000
 
 EX=0
@@ -25,4 +25,4 @@ echo "\n\nTest training with attention loss and ponderer"
 
 #python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'mlp' --epoch $EPOCH --save_every $CP_EVERY --teacher_forcing_ratio 0 --use_attention_loss --pondering  --batch_size=1 --scale_attention_loss 1 --optim adam
 
-python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'mlp' --epoch $EPOCH --save_every $CP_EVERY --teacher_forcing_ratio 0 --use_attention_loss  --batch_size=1 --scale_attention_loss 1 --optim adam
+python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'mlp' --epoch $EPOCH --save_every $CP_EVERY --teacher_forcing_ratio 0 --batch_size=1 --scale_attention_loss 1 --optim adam
