@@ -82,7 +82,7 @@ class Evaluator(object):
 
         return losses
 
-    def evaluate(self, model, data, get_batch_data, ponderer):
+    def evaluate(self, model, teacher_model, data, get_batch_data, ponderer):
         """ Evaluate a model on given dataset and return performance.
 
         Args:
@@ -115,7 +115,18 @@ class Evaluator(object):
 
             input_variable, input_lengths, target_variable = get_batch_data(batch)
 
-            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'])
+            # TODO: Why the -1? SOS?
+            # could this be done easier/prettier
+            # Got this from DecoderRNN._validate_args()
+            if input_variable is None:
+                max_len = 50
+            else:
+                max_len = target_variable['decoder_output'].size(1) - 1
+
+            actions = teacher_model.select_actions(input_variable, max_len)
+            teacher_model.finish_episode(inference_mode=True)
+
+            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'], attentions=actions)
 
             # apply metrics over entire sequence
             metrics = self.update_batch_metrics(metrics, other, target_variable)

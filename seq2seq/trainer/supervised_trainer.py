@@ -65,13 +65,13 @@ class SupervisedTrainer(object):
         # print "input lengths:", input_lengths
 
         # Forward propagation
-        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
-                                                       teacher_forcing_ratio=teacher_forcing_ratio)
+        # decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
+                                                       # teacher_forcing_ratio=teacher_forcing_ratio)
 
-        if self.ponderer is not None:
-            decoder_outputs = self.ponderer.mask_silent_outputs(input_variable, input_lengths.tolist(), decoder_outputs)
-            decoder_targets = self.ponderer.mask_silent_targets(input_variable, input_lengths.tolist(), target_variable['decoder_output'])
-            target_variable['decoder_output'] = decoder_targets
+        # if self.ponderer is not None:
+        #     decoder_outputs = self.ponderer.mask_silent_outputs(input_variable, input_lengths.tolist(), decoder_outputs)
+        #     decoder_targets = self.ponderer.mask_silent_targets(input_variable, input_lengths.tolist(), target_variable['decoder_output'])
+        #     target_variable['decoder_output'] = decoder_targets
 
         # Add target attentions to target_variable.
         # TODO: What will happen if --use_attention_loss is also set to True. Will this get overwritten in get_batch_data?
@@ -88,25 +88,40 @@ class SupervisedTrainer(object):
             #     target_attentions = target_attentions.cuda()
             # target_variable['attention_target'] = target_attentions
 
-            actions = teacher_model.select_actions(input_variable)
+            # TODO: Why the -1? SOS?
+            # could this be done easier/prettier
+            # Got this from DecoderRNN._validate_args()
+            if input_variable is None:
+                max_len = 50
+            else:
+                max_len = target_variable['decoder_output'].size(1) - 1
 
+            actions = teacher_model.select_actions(input_variable, max_len)
+
+            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
+                                                           teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
+
+            print actions
             # TODO: Calculate actual reward
-            if actions[0] == 9:
+            if actions[0] == 0:
                 teacher_model.rewards.append(1)
             else:
                 teacher_model.rewards.append(0)
 
-            if actions[1] == 6:
+            if actions[1] == 1:
                 teacher_model.rewards.append(1)
             else:
                 teacher_model.rewards.append(0)
 
-            if len(actions) == 3 and actions[2] == 2:
+            if len(actions) >= 3 and actions[2] == 2:
                 teacher_model.rewards.append(1)
-            elif len(actions) == 3:
+            elif len(actions) >= 3:
                 teacher_model.rewards.append(0)
 
-            print(actions)
+            if len(actions) >= 4 and actions[2] == 2:
+                teacher_model.rewards.append(1)
+            elif len(actions) >= 4:
+                teacher_model.rewards.append(0)
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
@@ -151,7 +166,7 @@ class SupervisedTrainer(object):
 
         # store initial model to be sure at least one model is stored
         eval_data = dev_data or data
-        losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data, ponderer=self.ponderer)
+        losses, metrics = self.evaluator.evaluate(model, teacher_model, eval_data, self.get_batch_data, ponderer=self.ponderer)
 
         total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
         print(log_msg)
@@ -204,7 +219,7 @@ class SupervisedTrainer(object):
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
-                    losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data, ponderer=self.ponderer)
+                    losses, metrics = self.evaluator.evaluate(model, teacher_model, eval_data, self.get_batch_data, ponderer=self.ponderer)
                     total_loss, log_msg, model_name = self.print_eval(losses, metrics, step)
 
 
@@ -231,7 +246,7 @@ class SupervisedTrainer(object):
             epoch_loss_total = 0
             log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss[0].name, epoch_loss_avg)
             if dev_data is not None:
-                losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data, ponderer=self.ponderer)
+                losses, metrics = self.evaluator.evaluate(model, teacher_model, dev_data, self.get_batch_data, ponderer=self.ponderer)
                 loss_total, log_, model_name = self.print_eval(losses, metrics, step)
 
                 # TODO: Add teacher_optimzer? 

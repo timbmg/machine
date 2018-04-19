@@ -72,7 +72,9 @@ class Teacher(nn.Module):
         self.hidden = (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
                        torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
 
-    def forward(self, state):
+    # For evaluation we need to generate an attention vector for all 50 outputs while we have only 3 inputs,
+    # Thats why we use max_len. Should be fixed
+    def forward(self, state, max_len):
         """
         Summary
 
@@ -82,6 +84,10 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
+        input_len = state.size(1)
+        if max_len > input_len:
+            state = torch.cat((state, torch.autograd.Variable(torch.zeros(max_len-input_len)).long()), 1)
+
         input_embedding = self.input_embedding(state)
 
         # TODO: Make sure that the entire input is processed, and only after that
@@ -93,7 +99,7 @@ class Teacher(nn.Module):
 
         return actions_probs
 
-    def select_actions(self, state):
+    def select_actions(self, state, max_len):
         """
         Summary
 
@@ -104,19 +110,30 @@ class Teacher(nn.Module):
             TYPE: Description
         """
         self.init_hidden()
-        probabilities = self.forward(state)
+        enc_len = state.size(1)
+        probabilities = self.forward(state, max_len)
+
+        # We set the probability of non-valid attentions to zero. We don't need to re-normalize as this is already done in Categorical
+        # probabilities_current_step[0, enc_len:] = 0
+        unnormalized_probs = probabilities
+        probabilities = unnormalized_probs.clone()
+        probabilities[:, :, enc_len:] = 0
+
+        import random
+        sample = random.random()
+        eps_threshold = 0.8
 
         actions = []
-        decoder_sequence_length = probabilities.size(1)
-        for decoder_step in range(decoder_sequence_length):
+        # TODO: Doesn't take into account mixed lengths in batch
+        # Doest it matter though? Aren't extra actions/attentions just ignored?
+        # decoder_sequence_length = probabilities.size(1)
+        for decoder_step in range(max_len):
             probabilities_current_step = probabilities[:, decoder_step, :]
-            categorical_distribution = Categorical(probabilities_current_step)
 
-            import random
-            sample = random.random()
-            eps_threshold = 0.9
+            categorical_distribution = Categorical(probs=probabilities_current_step)
+
             if sample > eps_threshold:
-                action = torch.autograd.Variable(torch.LongTensor([random.randrange(self.output_vocab_size)]))
+                action = torch.autograd.Variable(torch.LongTensor([random.randrange(enc_len)]))
             else:
                 action = categorical_distribution.sample()
 
@@ -126,7 +143,8 @@ class Teacher(nn.Module):
         return actions
 
     # TODO: Should we somehow make sure that this is called (at the right time)?
-    def finish_episode(self):
+    # TODO: inference is not a pretty solution. For now, i don't add rewards during evaluation, which results in an error. This is a quick fix. I guess we should also provide rewards at evaluation?
+    def finish_episode(self, inference_mode=False):
         """
         Summary
 
@@ -136,6 +154,11 @@ class Teacher(nn.Module):
         # Calculate discounted reward of entire episode
 
         # We must have a reward for every action
+        if inference_mode:
+            del self.rewards[:]
+            del self.saved_log_probs[:]
+            return -1
+
         assert len(self.rewards) == len(self.saved_log_probs), "Number of rewards ({}) must equal number of actions ({})".format(len(self.rewards), len(self.saved_log_probs))
 
         R = 0

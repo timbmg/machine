@@ -104,8 +104,7 @@ class DecoderRNN(BaseRNN):
         else:
             self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward_step(self, input_var, hidden, encoder_outputs, function):
-
+    def forward_step(self, input_var, hidden, encoder_outputs, function, attentions):
         batch_size = input_var.size(0)
         output_size = input_var.size(1)
         embedded = self.embedding(input_var)
@@ -115,13 +114,13 @@ class DecoderRNN(BaseRNN):
             h = hidden
             if isinstance(hidden, tuple):
                 h, c = hidden
-            context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs) # transpose to get batch at the second index
+            context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, attentions=attention) # transpose to get batch at the second index
             combined_input = torch.cat((context, embedded), dim=2)
             output, hidden = self.rnn(combined_input, hidden)
 
         elif self.use_attention == 'post-rnn':
             output, hidden = self.rnn(embedded, hidden) # for GRU hidden=h, for LSTM (h, c)
-            context, attn = self.attention(output, encoder_outputs)
+            context, attn = self.attention(output, encoder_outputs, attentions=attentions)
             output = torch.cat((context, output), dim=2)
 
         elif not self.use_attention:
@@ -133,7 +132,7 @@ class DecoderRNN(BaseRNN):
         return predicted_softmax, hidden, attn
 
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
-                    function=F.log_softmax, teacher_forcing_ratio=0):
+                function=F.log_softmax, teacher_forcing_ratio=0, attentions=None):
         ret_dict = dict()
         if self.use_attention:
             ret_dict[DecoderRNN.KEY_ATTN_SCORE] = list()
@@ -185,7 +184,7 @@ class DecoderRNN(BaseRNN):
 
                 # Perform one forward step
                 decoder_output, decoder_hidden, step_attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
-                                                                         function=function)
+                                                                         function=function, attentions=[attentions[di]])
                 # Remove the unnecessary dimension.
                 step_output = decoder_output.squeeze(1)
                 # Get the actual symbol
@@ -196,7 +195,7 @@ class DecoderRNN(BaseRNN):
             # It still is run for shorter output targets in the batch
             decoder_input = inputs[:, :-1]
             # Forward step without unrolling
-            decoder_output, decoder_hidden, attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function)
+            decoder_output, decoder_hidden, attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, attentions=attentions)
 
             for di in range(decoder_output.size(1)):
                 step_output = decoder_output[:, di, :]
