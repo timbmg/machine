@@ -97,7 +97,7 @@ class Teacher(nn.Module):
         action_scores = self.linear_output(lstm_out)
         actions_probs = F.softmax(action_scores, dim=2)
 
-        return actions_probs
+        return action_scores, actions_probs
 
     def select_actions(self, state, max_len):
         """
@@ -111,7 +111,7 @@ class Teacher(nn.Module):
         """
         self.init_hidden()
         enc_len = state.size(1)
-        probabilities = self.forward(state, max_len)
+        scores, probabilities = self.forward(state, max_len)
 
         # We set the probability of non-valid attentions to zero. We don't need to re-normalize as this is already done in Categorical
         # probabilities_current_step[0, enc_len:] = 0
@@ -119,9 +119,13 @@ class Teacher(nn.Module):
         probabilities = unnormalized_probs.clone()
         probabilities[:, :, enc_len:] = 0
 
+        # print "new"
+        # print scores[0, :, :3]
+        # print probabilities[0, :, :enc_len]
+
         import random
         sample = random.random()
-        eps_threshold = 0.8
+        eps_threshold = 0
 
         actions = []
         # TODO: Doesn't take into account mixed lengths in batch

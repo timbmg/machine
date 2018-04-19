@@ -101,27 +101,42 @@ class SupervisedTrainer(object):
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
                                                            teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
 
-            print actions
-            # TODO: Calculate actual reward
-            if actions[0] == 0:
-                teacher_model.rewards.append(1)
-            else:
-                teacher_model.rewards.append(0)
+            losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
-            if actions[1] == 1:
-                teacher_model.rewards.append(1)
-            else:
-                teacher_model.rewards.append(0)
+            # # TODO: Calculate actual reward
+            # if actions[0] == 0:
+            #     teacher_model.rewards.append(1)
+            # else:
+            #     teacher_model.rewards.append(0)
 
-            if len(actions) >= 3 and actions[2] == 2:
-                teacher_model.rewards.append(1)
-            elif len(actions) >= 3:
-                teacher_model.rewards.append(0)
+            # if actions[1] == 1:
+            #     teacher_model.rewards.append(1)
+            # else:
+            #     teacher_model.rewards.append(0)
 
-            if len(actions) >= 4 and actions[2] == 2:
-                teacher_model.rewards.append(1)
-            elif len(actions) >= 4:
+            # if len(actions) >= 3 and actions[2] == 2:
+            #     teacher_model.rewards.append(1)
+            # elif len(actions) >= 3:
+            #     teacher_model.rewards.append(0)
+
+            # if len(actions) >= 4 and actions[2] == 2:
+            #     teacher_model.rewards.append(1)
+            # elif len(actions) >= 4:
+            #     teacher_model.rewards.append(0)
+
+            # Backward propagation
+            for i, loss in enumerate(losses, 0):
+                loss.scale_loss(self.loss_weights[i])
+                loss.backward(retain_graph=True)
+            self.optimizer.step()
+            model.zero_grad()
+
+            # For now, we have no reward for all intermediate actions, and only add
+            # a reward to the last action, namely the negative loss
+            for action_iter in range(len(actions) - 1):
                 teacher_model.rewards.append(0)
+            teacher_model.rewards.append( -1 * losses[0].get_loss())
+            # print actions
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
@@ -133,14 +148,14 @@ class SupervisedTrainer(object):
         else:
             print("No teacher optimzer")
 
-        losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+        # losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
-        # Backward propagation
-        for i, loss in enumerate(losses, 0):
-            loss.scale_loss(self.loss_weights[i])
-            loss.backward(retain_graph=True)
-        self.optimizer.step()
-        model.zero_grad()
+        # # Backward propagation
+        # for i, loss in enumerate(losses, 0):
+        #     loss.scale_loss(self.loss_weights[i])
+        #     loss.backward(retain_graph=True)
+        # self.optimizer.step()
+        # model.zero_grad()
 
         return losses[0].get_loss()
 
@@ -184,6 +199,17 @@ class SupervisedTrainer(object):
 
 
         for epoch in range(start_epoch, n_epochs + 1):
+            # Reset model's parameters after some amount of epochs
+            if epoch % 100 == -1:
+                for mod in model.modules():
+                    if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
+                        for mod2 in mod.modules():
+                            if not isinstance(mod2, seq2seq.models.EncoderRNN) and not isinstance(mod2, seq2seq.models.DecoderRNN) and not isinstance(mod2, torch.nn.modules.dropout.Dropout) and not isinstance(mod2, seq2seq.models.attention.Attention) and not isinstance(mod2, seq2seq.models.attention.HardCoded):
+                                mod2.reset_parameters()
+
+                    elif not isinstance(mod, seq2seq.models.seq2seq.Seq2seq) and not isinstance(mod, torch.nn.modules.dropout.Dropout) and not isinstance(mod, seq2seq.models.attention.Attention) and not isinstance(mod, seq2seq.models.attention.HardCoded):
+                        mod.reset_parameters()
+
             log.debug("Epoch: %d, Step: %d" % (epoch, step))
 
             batch_generator = batch_iterator.__iter__()
