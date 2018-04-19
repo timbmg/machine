@@ -81,25 +81,40 @@ class SupervisedTrainer(object):
             #     target_attentions = target_attentions.cuda()
             # target_variable['attention_target'] = target_attentions
 
-            actions = teacher_model.select_actions(input_variable)
+            # TODO: Why the -1? SOS?
+            # could this be done easier/prettier
+            # Got this from DecoderRNN._validate_args()
+            if input_variable is None:
+                max_len = 50
+            else:
+                max_len = target_variable['decoder_output'].size(1) - 1
 
+            actions = teacher_model.select_actions(input_variable, max_len)
+
+            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
+                                                           teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
+
+            print actions
             # TODO: Calculate actual reward
-            if actions[0] == 9:
+            if actions[0] == 0:
                 teacher_model.rewards.append(1)
             else:
                 teacher_model.rewards.append(0)
 
-            if actions[1] == 6:
+            if actions[1] == 1:
                 teacher_model.rewards.append(1)
             else:
                 teacher_model.rewards.append(0)
 
-            if len(actions) == 3 and actions[2] == 2:
+            if len(actions) >= 3 and actions[2] == 2:
                 teacher_model.rewards.append(1)
-            elif len(actions) == 3:
+            elif len(actions) >= 3:
                 teacher_model.rewards.append(0)
 
-            print(actions)
+            if len(actions) >= 4 and actions[2] == 2:
+                teacher_model.rewards.append(1)
+            elif len(actions) >= 4:
+                teacher_model.rewards.append(0)
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
@@ -146,7 +161,7 @@ class SupervisedTrainer(object):
 
         # store initial model to be sure at least one model is stored
         val_data = dev_data or data
-        losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
+        losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data)
 
         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
         log.info(log_msg)
@@ -221,7 +236,7 @@ class SupervisedTrainer(object):
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
-                    losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
+                    losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data)
                     total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
                     max_eval_loss = max(loss_best)
@@ -251,7 +266,7 @@ class SupervisedTrainer(object):
             log_msg = "Finished epoch %d: Train %s" % (epoch, loss_msg)
 
             if dev_data is not None:
-                losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data)
+                losses, metrics = self.evaluator.evaluate(model, teacher_model, dev_data, self.get_batch_data)
                 loss_total, log_, model_name = self.get_losses(losses, metrics, step)
 
                 # TODO: Add teacher_optimzer? 

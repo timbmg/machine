@@ -189,6 +189,9 @@ else:
 input_vocabulary = input_vocab.itos
 output_vocabulary = output_vocab.itos
 
+print input_vocabulary
+print output_vocabulary
+
 #################################
 ##### PREPARE Teacher MODEL #####
 #################################
