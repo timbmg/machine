@@ -125,7 +125,7 @@ class Teacher(nn.Module):
 
         import random
         sample = random.random()
-        eps_threshold = 0
+        eps_threshold = 0.95
 
         actions = []
         # TODO: Doesn't take into account mixed lengths in batch
@@ -172,8 +172,8 @@ class Teacher(nn.Module):
             discounted_rewards.insert(0, R)
         discounted_rewards = torch.Tensor(discounted_rewards)
         # TODO: This doesn't work when reward is negative, right?
-        # discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / \
-        #     (discounted_rewards.std() + np.finfo(np.float32).eps)
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / \
+            (discounted_rewards.std() + np.finfo(np.float32).eps)
 
         # Calculate policy loss
         policy_loss = []

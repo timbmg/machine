@@ -67,8 +67,6 @@ class Attention(nn.Module):
         else:
             attn = self.method(decoder_states, encoder_states)
 
-        attn_before = attn.data.clone()
-
         if self.mask is not None:
             attn.data.masked_fill_(self.mask, -float('inf'))
 
