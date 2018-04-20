@@ -91,6 +91,9 @@ class SupervisedTrainer(object):
 
             actions = teacher_model.select_actions(input_variable, max_len)
 
+            # actions = range(len(actions))
+            # actions[-1] = actions[-2]
+
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
                                                            teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
 
@@ -126,15 +129,18 @@ class SupervisedTrainer(object):
 
             # For now, we have no reward for all intermediate actions, and only add
             # a reward to the last action, namely the negative loss
-            for action_iter in range(len(actions) - 1):
-                teacher_model.rewards.append(0)
-            teacher_model.rewards.append( -1 * losses[0].get_loss())
-            # print actions
+            loss_func = torch.nn.NLLLoss()
+            for action_iter in range(len(actions)):
+                pred = decoder_outputs[action_iter].view(1, -1)
+                ground_truth = target_variable['decoder_output'][0][action_iter]
+                step_loss = loss_func(pred, ground_truth).data.numpy()[0]
+                teacher_model.rewards.append(-step_loss)
+            # teacher_model.rewards.append(1 -1 * losses[0].get_loss())
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
 
-            self.teacher_optimizer.zero_grad()
+            teacher_model.zero_grad()
             policy_loss.backward()
             self.teacher_optimizer.step()
 
@@ -198,7 +204,8 @@ class SupervisedTrainer(object):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
             # Reset model's parameters after some amount of epochs
-            if epoch % 100 == -1:
+            if epoch % 10 == 0 and True:
+                raw_input()
                 for mod in model.modules():
                     if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
                         for mod2 in mod.modules():
@@ -359,7 +366,7 @@ class SupervisedTrainer(object):
             self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),
                                        max_grad_norm=5)
             # TODO: Should not be hard-coded
-            self.teacher_optimizer = torch.optim.Adam(teacher_model.parameters(), lr=0.001)
+            self.teacher_optimizer = Optimizer(get_optim('adam')(teacher_model.parameters(), lr=0.001), max_grad_norm=5)
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
         # TODO: Should we also use container Optimzer class?
