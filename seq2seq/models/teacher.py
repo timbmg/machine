@@ -43,37 +43,21 @@ class Teacher(nn.Module):
         """
         super(Teacher, self).__init__()
 
-        self.input_vocab_size = input_vocab_size
-        self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
-        self.output_vocab_size = output_vocab_size
         self.gamma = gamma
 
-        self.input_embedding = nn.Embedding(input_vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.linear_output = nn.Linear(hidden_dim, output_vocab_size)
+        self.encoder = TeacherEncoder(
+            input_vocab_size=input_vocab_size,
+            embedding_dim=embedding_dim,
+            hidden_dim=hidden_dim)
+
+        self.decoder = TeacherDecoder(
+            output_vocab_size=output_vocab_size,
+            embedding_dim=0,
+            hidden_dim=hidden_dim)
 
         self.saved_log_probs = []
         self.rewards = []
 
-    # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method. 
-    # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
-    def init_hidden(self):
-        """
-        Summary
-
-        Returns:
-            TYPE: Description
-        """
-        # Before we've done anything, we dont have any hidden state.
-        # Refer to the Pytorch documentation to see exactly
-        # why they have this dimensionality.
-        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        self.hidden = (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
-                       torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
-
-    # For evaluation we need to generate an attention vector for all 50 outputs while we have only 3 inputs,
-    # Thats why we use max_len. Should be fixed
     def forward(self, state, max_len):
         """
         Summary
@@ -84,20 +68,10 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
-        input_len = state.size(1)
-        if max_len > input_len:
-            state = torch.cat((state, torch.autograd.Variable(torch.zeros(max_len-input_len)).long()), 1)
+        encoded = self.encoder(input_variable=state)
+        action_probs = self.decoder(hidden=encoded, output_length=max_len)
 
-        input_embedding = self.input_embedding(state)
-
-        # TODO: Make sure that the entire input is processed, and only after that
-        # the attention vectors are calculated (seq2seq)
-        lstm_out, self.hidden = self.lstm(input_embedding, self.hidden)
-
-        action_scores = self.linear_output(lstm_out)
-        actions_probs = F.softmax(action_scores, dim=2)
-
-        return action_scores, actions_probs
+        return action_probs
 
     def select_actions(self, state, max_len):
         """
@@ -109,9 +83,8 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
-        self.init_hidden()
         enc_len = state.size(1)
-        scores, probabilities = self.forward(state, max_len)
+        probabilities = self.forward(state, max_len)
 
         # We set the probability of non-valid attentions to zero. We don't need to re-normalize as this is already done in Categorical
         # probabilities_current_step[0, enc_len:] = 0
@@ -186,3 +159,87 @@ class Teacher(nn.Module):
         del self.saved_log_probs[:]
 
         return policy_loss
+
+class TeacherEncoder(nn.Module):
+    def __init__(self, input_vocab_size, embedding_dim, hidden_dim):
+        super(TeacherEncoder, self).__init__()
+
+        self.input_vocab_size = input_vocab_size
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+
+        self.input_embedding = nn.Embedding(input_vocab_size, embedding_dim)
+        self.encoder = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+
+
+    # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method. 
+    # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
+    def init_hidden(self):
+        """
+        Summary
+
+        Returns:
+            TYPE: Description
+        """
+        # Before we've done anything, we dont have any hidden state.
+        # Refer to the Pytorch documentation to see exactly
+        # why they have this dimensionality.
+        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
+        hidden0 = (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
+                   torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
+
+        return hidden0
+
+    def forward(self, input_variable):
+        input_embedding = self.input_embedding(input_variable)
+
+        hidden0 = self.init_hidden()
+        out, hidden = self.encoder(input_embedding, hidden0)
+
+        return hidden
+
+class TeacherDecoder(nn.Module):
+    def __init__(self, output_vocab_size, embedding_dim, hidden_dim):
+        super(TeacherDecoder, self).__init__()
+
+        self.output_vocab_size = output_vocab_size
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+
+        # TODO: What should the input to the decoder be? Just the selected hidden state?
+        # Or maybe just no input?
+        # self.input_embedding = nn.Embedding(1, embedding_dim)
+        self.decoder = nn.LSTM(1, hidden_dim, batch_first=True)
+        self.linear_output = nn.Linear(hidden_dim, output_vocab_size)
+
+    # For evaluation we need to generate an attention vector for all 50 outputs while we have only 3 inputs,
+    # Thats why we use max_len. Should be fixed
+    def forward(self, hidden, output_length):
+        """
+        Summary
+
+        Args:
+            state (TYPE): Description
+
+        Returns:
+            TYPE: Description
+        """
+        action_probs_list = []
+        # TODO: We use rolled out version. If we actually won't use any (informative) input to the decoder
+        # we should roll it to save computation time and have cleaner code.
+        for decoder_step in range(output_length):
+            # TODO: What should the input to the decoder be?
+            embedding = torch.autograd.Variable(torch.zeros(1,1,1))
+
+            out, hidden = self.decoder(embedding, hidden)
+
+            action_scores = self.linear_output(out)
+
+            # TODO: Does it make sense to use log_softmax such that we don't have to call categorical.log_prob()?
+            # Would we then have to initialize Categorical with logits instead of probs?
+            action_probs = F.softmax(action_scores, dim=2)
+            action_probs_list.append(action_probs)
+
+        action_probs = torch.cat(action_probs_list, dim=1)
+
+        return action_probs

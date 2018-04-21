@@ -204,7 +204,7 @@ class SupervisedTrainer(object):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
             # Reset model's parameters after some amount of epochs
-            if epoch % 10 == 0 and True:
+            if epoch % 10 == 0 and False:
                 raw_input()
                 for mod in model.modules():
                     if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
