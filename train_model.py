@@ -167,8 +167,8 @@ print output_vocabulary
 #################################
 teacher_model = Teacher(
     input_vocab_size=len(src.vocab),
-    embedding_dim=40,
-    hidden_dim=40,
+    embedding_dim=opt.embedding_size,
+    hidden_dim=hidden_size,
     gamma=0.9)
 if torch.cuda.is_available():
   teacher_model.cuda()
@@ -219,7 +219,7 @@ t = SupervisedTrainer(loss=loss, metrics=metrics,
                       eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
-
+t.target_pad_value=pad
 seq2seq = t.train(model=seq2seq,
                   teacher_model=teacher_model,
                   data=train, 

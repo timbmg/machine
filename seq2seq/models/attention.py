@@ -206,7 +206,7 @@ class HardCoded(nn.Module):
         Returns:
             attn: The attention distribution over the encoder states for each of the provided decoder states (batch_size X dec_seqlen X enc_seqlen)
         """
-        attentions = kwargs['attentions']
+        attention_indices = kwargs['attentions']
         
         # decoder_states --> (batch, dec_seqlen, hl_size)
         # encoder_states --> (batch, enc_seqlen, hl_size)
@@ -254,10 +254,21 @@ class HardCoded(nn.Module):
         # this case we will also attend these extra decoder steps to the encoders last state. However, these should be ignored for calculating
         # the loss and metrics.
 
-            # Fill the attention vectors with a 1 at the specified indices/step
-        for attention in attentions:
-            indices = attention * torch.ones(batch_size, dec_seqlen, 1)
-            attn = attn.scatter_(dim=2, index=indices.long(), value=1)
+        # We create an attention indices tensor of (batch_size x dec_seqlen x 1) which contains the indices of the attention vectors.
+        # So for each element in the batch, for each decoder step, we have a number that represents the index of the encoder state that needs to be attended to.
+        if len(attention_indices) > 1:
+            # Rolled RNN case
+            attention_indices = torch.stack(attention_indices, dim=1)
+        else:
+            # Unrolled RNN case (single decoder state)
+            attention_indices = attention_indices[0]
+            attention_indices = attention_indices.unsqueeze(1)
+
+        # Add the third dimension
+        attention_indices = attention_indices.unsqueeze(2)
+
+        # Fill the specified indices with a 1
+        attn = attn.scatter_(dim=2, index=attention_indices.long(), value=1)
 
         # Convert into non-grad Variable
         attn = torch.autograd.Variable(attn, requires_grad=False)

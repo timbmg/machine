@@ -115,15 +115,12 @@ class Evaluator(object):
 
             input_variable, input_lengths, target_variable = get_batch_data(batch)
 
-            # TODO: Why the -1? SOS?
-            # could this be done easier/prettier
-            # Got this from DecoderRNN._validate_args()
-            if input_variable is None:
-                max_len = 50
-            else:
-                max_len = target_variable['decoder_output'].size(1) - 1
+            # max_len is the maximum number of action the understander has to produce. target_variable holds both SOS and EOS.
+            # Since we do not have to produce action for SOS we substract 1. Note that some examples in the batch might need less actions
+            # then produced. These should however be ignored for loss/metrics
+            max_decoding_length = target_variable['decoder_output'].size(1) - 1
 
-            actions = teacher_model.select_actions(input_variable, max_len)
+            actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length)
             teacher_model.finish_episode(inference_mode=True)
 
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'], attentions=actions)

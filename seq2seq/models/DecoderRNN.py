@@ -114,7 +114,7 @@ class DecoderRNN(BaseRNN):
             h = hidden
             if isinstance(hidden, tuple):
                 h, c = hidden
-            context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, attentions=attention) # transpose to get batch at the second index
+            context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, attentions=attentions) # transpose to get batch at the second index
             combined_input = torch.cat((context, embedded), dim=2)
             output, hidden = self.rnn(combined_input, hidden)
 

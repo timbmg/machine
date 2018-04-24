@@ -91,12 +91,8 @@ class SupervisedTrainer(object):
             # TODO: Why the -1? SOS?
             # could this be done easier/prettier
             # Got this from DecoderRNN._validate_args()
-            if input_variable is None:
-                max_len = 50
-            else:
-                max_len = target_variable['decoder_output'].size(1) - 1
-
-            actions = teacher_model.select_actions(input_variable, max_len)
+            max_len = target_variable['decoder_output'].size(1) - 1
+            actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len)
 
             # actions = range(len(actions))
             # actions[-1] = actions[-2]
@@ -136,16 +132,17 @@ class SupervisedTrainer(object):
 
             # For now, we have no reward for all intermediate actions, and only add
             # a reward to the last action, namely the negative loss
-            loss_func = torch.nn.NLLLoss()
+            loss_func = torch.nn.NLLLoss(ignore_index=self.target_pad_value, reduce=False)
             for action_iter in range(len(actions)):
-                pred = decoder_outputs[action_iter].view(1, -1)
-                ground_truth = target_variable['decoder_output'][0][action_iter]
-                step_loss = loss_func(pred, ground_truth).data.numpy()[0]
-                teacher_model.rewards.append(-step_loss)
-            # teacher_model.rewards.append(1 -1 * losses[0].get_loss())
+                pred = decoder_outputs[action_iter]
+                # +1 because target_variable includes SOS which the prediction of course doesn't
+                ground_truth = target_variable['decoder_output'][:,action_iter+1]
+                step_loss = list(-loss_func(pred, ground_truth).data.numpy())
+                teacher_model.rewards.append(step_loss)
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
+            print policy_loss
 
             teacher_model.zero_grad()
             policy_loss.backward()

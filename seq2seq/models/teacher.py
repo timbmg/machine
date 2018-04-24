@@ -55,7 +55,7 @@ class Teacher(nn.Module):
         self.saved_log_probs = []
         self.rewards = []
 
-    def forward(self, state, max_len):
+    def forward(self, state, valid_action_mask, max_decoding_length):
         """
         Summary
 
@@ -66,11 +66,11 @@ class Teacher(nn.Module):
             TYPE: Description
         """
         encoder_outputs, encoded_hidden = self.encoder(input_variable=state)
-        action_probs = self.decoder(encoder_outputs=encoder_outputs, hidden=encoded_hidden, output_length=max_len)
+        action_probs = self.decoder(encoder_outputs=encoder_outputs, hidden=encoded_hidden, output_length=max_decoding_length, valid_action_mask=valid_action_mask)
 
         return action_probs
 
-    def select_actions(self, state, max_len):
+    def select_actions(self, state, input_lengths, max_decoding_length):
         """
         Summary
 
@@ -80,10 +80,20 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
-        enc_len = state.size(1)
-        probabilities = self.forward(state, max_len)
 
-        # print probabilities
+        batch_size = state.size(0)
+        max_encoding_length = torch.max(input_lengths)
+
+        # (batch_size x 1) -> (batch_size x max_encoding_length)
+        input_lengths_expanded = input_lengths.unsqueeze(1).expand(-1, max_encoding_length)
+
+        # Use arange to create list 0, 1, 2, 3, .. for each element in the batch
+        encoding_steps = torch.arange(max_encoding_length).long().unsqueeze(0).expand(batch_size, -1)
+
+        # A (batch_size x max_encoding_length) tensor that has a 1 for all valid actions and 0 for all invalid actions
+        valid_action_mask = encoding_steps < input_lengths_expanded
+
+        probabilities = self.forward(state, valid_action_mask, max_decoding_length)
 
         import random
         sample = random.random()
@@ -93,19 +103,27 @@ class Teacher(nn.Module):
         # TODO: Doesn't take into account mixed lengths in batch
         # Doest it matter though? Aren't extra actions/attentions just ignored?
         # decoder_sequence_length = probabilities.size(1)
-        for decoder_step in range(max_len):
+        for decoder_step in range(max_decoding_length):
             probabilities_current_step = probabilities[:, decoder_step, :]
 
-            categorical_distribution = Categorical(probs=probabilities_current_step)
+            categorical_distribution_policy = Categorical(probs=probabilities_current_step)
 
-            if sample > eps_threshold:
-                action = torch.autograd.Variable(torch.LongTensor([random.randrange(enc_len)]))
+            # Pick random action
+            if sample > eps_threshold or True:
+                # We don't need to normalize these to probabilities, as this is already done in Categorical()
+                uniform_probability_current_step = torch.autograd.Variable(valid_action_mask.float())
+                categorical_distribution_uniform = Categorical(probs=uniform_probability_current_step)
+                action = categorical_distribution_uniform.sample()
+
+            # Pick policy by stochastic policy
             else:
-                action = categorical_distribution.sample()
+                action = categorical_distribution_policy.sample()
 
-            self.saved_log_probs.append(categorical_distribution.log_prob(action))
-            actions.append(action.data[0])
+            self.saved_log_probs.append(categorical_distribution_policy.log_prob(action))
+             
+            actions.append(action.data)
 
+        # print probabilities
         # print actions
 
         return actions
@@ -131,23 +149,50 @@ class Teacher(nn.Module):
 
         R = 0
         discounted_rewards = []
-        for r in self.rewards[::-1]:
+
+        # TODO: Works, but not nice
+        # Get numpy array (n_rewards x batch_size)
+        import numpy
+        rewards = numpy.array(self.rewards)
+
+        for r in rewards[::-1]:
             R = r + self.gamma * R
-            discounted_rewards.insert(0, R)
+            discounted_rewards.insert(0, R.tolist())
+
         discounted_rewards = torch.Tensor(discounted_rewards)
+
         # TODO: This doesn't work when reward is negative, right?
-        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / \
-            (discounted_rewards.std() + np.finfo(np.float32).eps)
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean(dim=0, keepdim=True)) / \
+            (discounted_rewards.std(dim=0, keepdim=True) + float(np.finfo(np.float32).eps))
+
+        # (n_rewards x batch_size) -> (batch_size x n_rewards)
+        discounted_rewards = discounted_rewards.transpose(0, 1)
+        discounted_rewards = torch.autograd.Variable(discounted_rewards, requires_grad=False)
+
+        # Stack list of length n_rewards with 1D Variables of length batch_size to Variable of (batch_size x n_rewards)
+        saved_log_probs = torch.stack(self.saved_log_probs, dim=1)
 
         # Calculate policy loss
-        policy_loss = []
-        for log_prob, reward in zip(self.saved_log_probs, discounted_rewards):
-            policy_loss.append(-log_prob * reward)
-        policy_loss = torch.cat(policy_loss).sum()
+        # Multiply each reward with it's negative log-probability element-wise
+        policy_loss = -saved_log_probs * discounted_rewards
+        # Sum over rewards, take mean over batch
+        # TODO: Should we take mean over rewards?
+
+        policy_loss = policy_loss.sum(dim=1).mean()
+        
+        # policy_loss = []
+        # for log_prob, reward in zip(self.saved_log_probs, discounted_rewards):
+        #     policy_loss.append(-log_prob * reward)
+        # policy_loss = torch.cat(policy_loss).sum()
 
         # Reset episode
         del self.rewards[:]
         del self.saved_log_probs[:]
+
+        import math
+        if math.isnan(policy_loss.data.numpy()[0]):
+            print "NANNAN"
+            exit()
 
         return policy_loss
 
@@ -163,29 +208,12 @@ class TeacherEncoder(nn.Module):
         self.encoder = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
 
 
-    # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method. 
-    # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
-    def init_hidden(self):
-        """
-        Summary
-
-        Returns:
-            TYPE: Description
-        """
-        # Before we've done anything, we dont have any hidden state.
-        # Refer to the Pytorch documentation to see exactly
-        # why they have this dimensionality.
-        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        hidden0 = (torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)),
-                   torch.autograd.Variable(torch.zeros(1, 1, self.hidden_dim)))
-
-        return hidden0
-
     def forward(self, input_variable):
         input_embedding = self.input_embedding(input_variable)
 
-        hidden0 = self.init_hidden()
-        out, hidden = self.encoder(input_embedding, hidden0)
+        # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method. 
+        # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
+        out, hidden = self.encoder(input_embedding)
 
         return out, hidden
 
@@ -206,7 +234,7 @@ class TeacherDecoder(nn.Module):
 
     # For evaluation we need to generate an attention vector for all 50 outputs while we have only 3 inputs,
     # Thats why we use max_len. Should be fixed
-    def forward(self, encoder_outputs, hidden, output_length):
+    def forward(self, encoder_outputs, hidden, output_length, valid_action_mask):
         """
         Summary
 
@@ -217,18 +245,20 @@ class TeacherDecoder(nn.Module):
             TYPE: Description
         """
         action_scores_list = []
+        batch_size = encoder_outputs.size(0)
 
         # TODO: We use rolled out version. If we actually won't use any (informative) input to the decoder
         # we should roll it to save computation time and have cleaner code.
         for decoder_step in range(output_length):
             # TODO: What should the input to the decoder be?
-            embedding = torch.autograd.Variable(torch.zeros(1,1,1))
+            embedding = torch.autograd.Variable(torch.zeros(batch_size, 1, 1))
 
             out, hidden = self.decoder(embedding, hidden)
 
             # I copied the attention mechanism from Machine's MLP attention method
             encoder_states = encoder_outputs
             h, c = hidden
+            h = h.transpose(0, 1)
             decoder_states = h
             # apply mlp to all encoder states for current decoder
             # decoder_states --> (batch, dec_seqlen, hl_size)
@@ -256,6 +286,10 @@ class TeacherDecoder(nn.Module):
 
         # Combine the action scores for each decoder step into 1 variable
         action_scores = torch.cat(action_scores_list, dim=1)
+
+        invalid_action_mask = valid_action_mask.ne(1).unsqueeze(1).expand(-1, output_length, -1)
+
+        action_scores.data.masked_fill_(invalid_action_mask, -float('inf'))
 
         # For each decoder step, take the softmax over all actions to get probs
         # TODO: Does it make sense to use log_softmax such that we don't have to call categorical.log_prob()?
