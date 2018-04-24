@@ -137,7 +137,7 @@ class DecoderRNN(BaseRNN):
             # Apply the attention method to get the attention vector and weighted context vector. Provide decoder step for hard attention
             # TODO: Include attentions in attention_method_kwargs
             context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, **attention_method_kwargs, attentions=attention) # transpose to get batch at the second index
-            
+
             combined_input = torch.cat((context, embedded), dim=2)
             if self.full_focus:
                 merged_input = F.relu(self.ffocus_merge(combined_input))
