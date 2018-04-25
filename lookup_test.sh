@@ -28,4 +28,4 @@ echo "\n\nTest training with attention loss and ponderer"
 # python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'hard' --epoch 1 --save_every $CP_EVERY --teacher_forcing_ratio 0 --batch_size=1 --eval_batch_size=1 --scale_attention_loss 1 --optim adam --lr 0.001
 echo ''
 echo ''
-python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'hard' --epoch $EPOCH --save_every $CP_EVERY --teacher_forcing_ratio 0.1 --batch_size=1 --eval_batch_size=100 --scale_attention_loss 1 --optim adam --lr 0.001
+python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --output_dir $EXPT_DIR --print_every 50 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --attention 'post-rnn' --attention_method 'hard' --epoch $EPOCH --save_every $CP_EVERY --teacher_forcing_ratio 0.1 --batch_size=5 --eval_batch_size=100 --scale_attention_loss 1 --optim adam --lr 0.001

@@ -95,10 +95,6 @@ class Teacher(nn.Module):
 
         probabilities = self.forward(state, valid_action_mask, max_decoding_length)
 
-        import random
-        sample = random.random()
-        eps_threshold = 0.95
-
         actions = []
         # TODO: Doesn't take into account mixed lengths in batch
         # Doest it matter though? Aren't extra actions/attentions just ignored?
@@ -107,6 +103,10 @@ class Teacher(nn.Module):
             probabilities_current_step = probabilities[:, decoder_step, :]
 
             categorical_distribution_policy = Categorical(probs=probabilities_current_step)
+
+            import random
+            sample = random.random()
+            eps_threshold = 0.9
 
             # Pick random action
             if sample > eps_threshold or True:
@@ -123,7 +123,7 @@ class Teacher(nn.Module):
              
             actions.append(action.data)
 
-        # print probabilities
+        print probabilities
         # print actions
 
         return actions
@@ -162,8 +162,8 @@ class Teacher(nn.Module):
         discounted_rewards = torch.Tensor(discounted_rewards)
 
         # TODO: This doesn't work when reward is negative, right?
-        discounted_rewards = (discounted_rewards - discounted_rewards.mean(dim=0, keepdim=True)) / \
-            (discounted_rewards.std(dim=0, keepdim=True) + float(np.finfo(np.float32).eps))
+        # discounted_rewards = (discounted_rewards - discounted_rewards.mean(dim=0, keepdim=True)) / \
+        #     (discounted_rewards.std(dim=0, keepdim=True) + float(np.finfo(np.float32).eps))
 
         # (n_rewards x batch_size) -> (batch_size x n_rewards)
         discounted_rewards = discounted_rewards.transpose(0, 1)

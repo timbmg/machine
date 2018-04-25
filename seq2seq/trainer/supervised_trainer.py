@@ -137,12 +137,12 @@ class SupervisedTrainer(object):
                 pred = decoder_outputs[action_iter]
                 # +1 because target_variable includes SOS which the prediction of course doesn't
                 ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                step_loss = list(-loss_func(pred, ground_truth).data.numpy())
+                step_loss = list(3-loss_func(pred, ground_truth).data.numpy())
+
                 teacher_model.rewards.append(step_loss)
 
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
-            print policy_loss
 
             teacher_model.zero_grad()
             policy_loss.backward()
@@ -341,7 +341,7 @@ class SupervisedTrainer(object):
             self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),
                                        max_grad_norm=5)
             # TODO: Should not be hard-coded
-            self.teacher_optimizer = Optimizer(get_optim('adam')(teacher_model.parameters(), lr=0.001), max_grad_norm=5)
+            self.teacher_optimizer = Optimizer(get_optim('adam')(teacher_model.parameters(), lr=learning_rate), max_grad_norm=5)
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
         # TODO: Should we also use container Optimzer class?
