@@ -130,10 +130,10 @@ class SupervisedTrainer(object):
                 pred = decoder_outputs[action_iter]
                 # +1 because target_variable includes SOS which the prediction of course doesn't
                 ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                step_loss = list(3-loss_func(pred, ground_truth).data.numpy())
+                step_reward = list(3-loss_func(pred, ground_truth).data.numpy())
 
-                teacher_model.rewards.append(step_loss)
-
+                teacher_model.rewards.append(step_reward)
+                
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
 
