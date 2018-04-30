@@ -109,7 +109,7 @@ class Teacher(nn.Module):
             eps_threshold = 0.9
 
             # Pick random action
-            if sample > eps_threshold or True:
+            if sample > eps_threshold:
                 # We don't need to normalize these to probabilities, as this is already done in Categorical()
                 uniform_probability_current_step = torch.autograd.Variable(valid_action_mask.float())
                 categorical_distribution_uniform = Categorical(probs=uniform_probability_current_step)
