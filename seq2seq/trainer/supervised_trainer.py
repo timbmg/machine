@@ -59,6 +59,7 @@ class SupervisedTrainer(object):
         self.batch_size = batch_size
 
         self.logger = logging.getLogger(__name__)
+        self.pre_train=True
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_model, teacher_forcing_ratio):
         loss = self.loss
@@ -85,10 +86,27 @@ class SupervisedTrainer(object):
             # could this be done easier/prettier
             # Got this from DecoderRNN._validate_args()
             max_len = target_variable['decoder_output'].size(1) - 1
-            actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len)
+            if self.pre_train:
+                mode = 'pre_train'
+            else:
+                mode = 'train'
+            actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len, mode=mode)
 
-            # actions = range(len(actions))
-            # actions[-1] = actions[-2]
+            if self.pre_train:
+                max_input_length = torch.max(input_lengths)
+                ars = []
+                for input_length in input_lengths.numpy():
+                    ar = torch.arange(max_input_length+1)
+                    ar[-1] = ar[-2]
+                    if input_length < max_input_length:
+                        ar[-2] = ar[-3]
+                        ar[-1] = ar[-3]
+                    ars.append(ar)
+
+                ars = torch.stack(ars, dim=1)
+                ars = ars.numpy()
+                ars = [torch.LongTensor(ar) for ar in ars]
+                actions = ars
 
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
                                                            teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
@@ -117,11 +135,12 @@ class SupervisedTrainer(object):
             #     teacher_model.rewards.append(0)
 
             # Backward propagation
-            for i, loss in enumerate(losses, 0):
-                loss.scale_loss(self.loss_weights[i])
-                loss.backward(retain_graph=True)
-            self.optimizer.step()
-            model.zero_grad()
+            if self.pre_train:
+                for i, loss in enumerate(losses, 0):
+                    loss.scale_loss(self.loss_weights[i])
+                    loss.backward(retain_graph=True)
+                self.optimizer.step()
+                model.zero_grad()
 
             # For now, we have no reward for all intermediate actions, and only add
             # a reward to the last action, namely the negative loss
@@ -130,16 +149,18 @@ class SupervisedTrainer(object):
                 pred = decoder_outputs[action_iter]
                 # +1 because target_variable includes SOS which the prediction of course doesn't
                 ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                step_reward = list(3-loss_func(pred, ground_truth).data.numpy())
+                import numpy
+                step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).data.numpy())/3, 0, 1))
 
                 teacher_model.rewards.append(step_reward)
-                
+
             # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
             policy_loss = teacher_model.finish_episode()
 
-            teacher_model.zero_grad()
-            policy_loss.backward()
-            self.teacher_optimizer.step()
+            if not self.pre_train:
+                teacher_model.zero_grad()
+                policy_loss.backward()
+                self.teacher_optimizer.step()
 
         else:
             print("No teacher optimzer")
@@ -155,7 +176,7 @@ class SupervisedTrainer(object):
 
         return losses
 
-    def _train_epoches(self, data, model, teacher_model, n_epochs, start_epoch, start_step,
+    def _train_epoches(self, data, model, teacher_model, n_epochs, start_epoch, start_step, pre_train=None,
                        dev_data=None, monitor_data=[], teacher_forcing_ratio=0, top_k=5):
         log = self.logger
 
@@ -165,13 +186,19 @@ class SupervisedTrainer(object):
         print_loss_avg = defaultdict(float)
 
         device = None if torch.cuda.is_available() else -1
-        batch_iterator = torchtext.data.BucketIterator(
+        batch_iterator_train = torchtext.data.BucketIterator(
             dataset=data, batch_size=self.batch_size,
             sort=False, sort_within_batch=True,
             sort_key=lambda x: len(x.src),
             device=device, repeat=False)
 
-        steps_per_epoch = len(batch_iterator)
+        batch_iterator_pre_train = torchtext.data.BucketIterator(
+            dataset=pre_train, batch_size=self.batch_size,
+            sort=False, sort_within_batch=True,
+            sort_key=lambda x: len(x.src),
+            device=device, repeat=False)
+
+        steps_per_epoch = len(batch_iterator_train)
         total_steps = steps_per_epoch * n_epochs
 
         step = start_step
@@ -179,7 +206,7 @@ class SupervisedTrainer(object):
 
         # store initial model to be sure at least one model is stored
         val_data = dev_data or data
-        losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data)
+        losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data, pre_train=self.pre_train)
 
         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
         log.info(log_msg)
@@ -200,23 +227,33 @@ class SupervisedTrainer(object):
         for epoch in range(start_epoch, n_epochs + 1):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
+            if epoch < 100:
+                self.pre_train = True
+                batch_generator = batch_iterator_pre_train.__iter__()
+
+            else:
+                if self.pre_train:
+                    raw_input()
+                # raw_input()
+                self.pre_train = False
+                batch_generator = batch_iterator_train.__iter__()
+
             # Reset model's parameters after some amount of epochs
-            if epoch % 10 == 0 and False:
-                raw_input()
-                for mod in model.modules():
-                    if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
-                        for mod2 in mod.modules():
-                            if not isinstance(mod2, seq2seq.models.EncoderRNN) and not isinstance(mod2, seq2seq.models.DecoderRNN) and not isinstance(mod2, torch.nn.modules.dropout.Dropout) and not isinstance(mod2, seq2seq.models.attention.Attention) and not isinstance(mod2, seq2seq.models.attention.HardCoded):
-                                mod2.reset_parameters()
+                # for mod in model.modules():
+                #     if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
+                #         for mod2 in mod.modules():
+                #             if not isinstance(mod2, seq2seq.models.EncoderRNN) and not isinstance(mod2, seq2seq.models.DecoderRNN) and not isinstance(mod2, torch.nn.modules.dropout.Dropout) and not isinstance(mod2, seq2seq.models.attention.Attention) and not isinstance(mod2, seq2seq.models.attention.HardCoded):
+                #                 mod2.reset_parameters()
 
-                    elif not isinstance(mod, seq2seq.models.seq2seq.Seq2seq) and not isinstance(mod, torch.nn.modules.dropout.Dropout) and not isinstance(mod, seq2seq.models.attention.Attention) and not isinstance(mod, seq2seq.models.attention.HardCoded):
-                        mod.reset_parameters()
+                #     elif not isinstance(mod, seq2seq.models.seq2seq.Seq2seq) and not isinstance(mod, torch.nn.modules.dropout.Dropout) and not isinstance(mod, seq2seq.models.attention.Attention) and not isinstance(mod, seq2seq.models.attention.HardCoded):
+                #         mod.reset_parameters()
 
-            batch_generator = batch_iterator.__iter__()
+            # batch_generator = batch_iterator.__iter__()
 
-            # consuming seen batches from previous training
-            for _ in range((epoch - 1) * steps_per_epoch, step):
-                next(batch_generator)
+            # TODO: What to do about this?
+            # # consuming seen batches from previous training
+            # for _ in range((epoch - 1) * steps_per_epoch, step):
+            #     next(batch_generator)
 
             model.train(True)
             for batch in batch_generator:
@@ -266,7 +303,7 @@ class SupervisedTrainer(object):
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
-                    losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data)
+                    losses, metrics = self.evaluator.evaluate(model, teacher_model, val_data, self.get_batch_data, pre_train=self.pre_train)
                     total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
                     max_eval_loss = max(loss_best)
@@ -296,7 +333,7 @@ class SupervisedTrainer(object):
             log_msg = "Finished epoch %d: Train %s" % (epoch, loss_msg)
 
             if dev_data is not None:
-                losses, metrics = self.evaluator.evaluate(model, teacher_model, dev_data, self.get_batch_data)
+                losses, metrics = self.evaluator.evaluate(model, teacher_model, dev_data, self.get_batch_data, pre_train=self.pre_train)
                 loss_total, log_, model_name = self.get_losses(losses, metrics, step)
 
                 # TODO: Add teacher_optimzer? 
@@ -311,7 +348,7 @@ class SupervisedTrainer(object):
 
         return logs
 
-    def train(self, model, data, teacher_model=None, num_epochs=5,
+    def train(self, model, data, pre_train=None, teacher_model=None, num_epochs=5,
               resume=False, dev_data=None, optimizer=None,
               teacher_forcing_ratio=0, monitor_data={},
               learning_rate=0.001, checkpoint_path=None, top_k=5):
@@ -371,7 +408,7 @@ class SupervisedTrainer(object):
         #     self.logger.info("Teacher optimizer: %s, scheduler: %s" % (self.teacher_optimizer.optimizer, self.teacher_optimizer.scheduler))
 
         logs = self._train_epoches(data, model, teacher_model, num_epochs,
-                            start_epoch, step, dev_data=dev_data,
+                            start_epoch, step, pre_train=pre_train, dev_data=dev_data,
                             monitor_data=monitor_data,
                             teacher_forcing_ratio=teacher_forcing_ratio,
                             top_k=top_k)

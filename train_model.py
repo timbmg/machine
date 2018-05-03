@@ -27,6 +27,7 @@ except NameError:
     raw_input = input  # Python 3
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--pre_train', help='Pre-training data')
 parser.add_argument('--train', help='Training data')
 parser.add_argument('--dev', help='Development data')
 parser.add_argument('--monitor', nargs='+', default=[], help='Data to monitor during training')
@@ -118,6 +119,15 @@ train = torchtext.data.TabularDataset(
     fields=tabular_data_fields,
     filter_pred=len_filter
 )
+
+if opt.pre_train:
+  pre_train = torchtext.data.TabularDataset(
+      path=opt.pre_train, format='tsv',
+      fields=[('src', src), ('tgt', tgt)],
+      filter_pred=len_filter
+  )
+else:
+  pre_train = None
 
 if opt.dev:
     dev = torchtext.data.TabularDataset(
@@ -262,8 +272,10 @@ t.target_pad_value=pad
 seq2seq, logs = t.train(model=seq2seq,
                   teacher_model=teacher_model,
                   data=train,
+                  dev_data=dev,
                   monitor_data=monitor_data,
-                  num_epochs=opt.epochs, dev_data=dev,
+                  pre_train=pre_train,
+                  num_epochs=opt.epochs,
                   ponderer=ponderer,
                   optimizer=opt.optim,
                   teacher_forcing_ratio=opt.teacher_forcing_ratio,
