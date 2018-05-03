@@ -68,6 +68,9 @@ if opt.resume and not opt.load_checkpoint:
 if opt.use_attention_loss and not opt.attention:
     parser.error('Specify attention type to use attention loss')
 
+if opt.use_attention_loss and opt.attention_method == 'hard':
+    parser.error("Attention loss cannot be used in combination with hard-coded attentive guidance")
+
 LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, opt.log_level.upper()))
 logging.info(opt)
