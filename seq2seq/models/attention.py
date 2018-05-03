@@ -91,7 +91,9 @@ class Attention(nn.Module):
         # -inf -inf 1
         # -inf -inf -inf
         # which results in NaNs
-        attn[attn != attn] = 0
+        attn_containing_nan = attn
+        attn = attn_containing_nan.clone()
+        attn.masked_fill_(attn_containing_nan != attn_containing_nan, 0)
 
         # (batch, out_len, in_len) * (batch, in_len, dim) -> (batch, out_len, dim)
         context = torch.bmm(attn, encoder_states)
