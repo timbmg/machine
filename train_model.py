@@ -24,6 +24,7 @@ except NameError:
     raw_input = input  # Python 3
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--pre_train', help='Pre-training data')
 parser.add_argument('--train', help='Training data')
 parser.add_argument('--dev', help='Development data')
 parser.add_argument('--output_dir', default='../models', help='Path to model directory. If load_checkpoint is True, then path to checkpoint directory has to be provided')
@@ -96,6 +97,15 @@ train = torchtext.data.TabularDataset(
     fields=[('src', src), ('tgt', tgt)],
     filter_pred=len_filter
 )
+
+if opt.pre_train:
+  pre_train = torchtext.data.TabularDataset(
+      path=opt.pre_train, format='tsv',
+      fields=[('src', src), ('tgt', tgt)],
+      filter_pred=len_filter
+  )
+else:
+  pre_train = None
 
 if opt.dev:
     dev = torchtext.data.TabularDataset(
@@ -222,7 +232,8 @@ t = SupervisedTrainer(loss=loss, metrics=metrics,
 t.target_pad_value=pad
 seq2seq = t.train(model=seq2seq,
                   teacher_model=teacher_model,
-                  data=train, 
+                  data=train,
+                  pre_train=pre_train,
                   num_epochs=opt.epochs, dev_data=dev,
                   ponderer=ponderer,
                   optimizer=opt.optim,

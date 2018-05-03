@@ -82,7 +82,7 @@ class Evaluator(object):
 
         return losses
 
-    def evaluate(self, model, teacher_model, data, get_batch_data, ponderer):
+    def evaluate(self, model, teacher_model, data, get_batch_data, ponderer, pre_train):
         """ Evaluate a model on given dataset and return performance.
 
         Args:
@@ -120,8 +120,24 @@ class Evaluator(object):
             # then produced. These should however be ignored for loss/metrics
             max_decoding_length = target_variable['decoder_output'].size(1) - 1
 
-            actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length)
+            actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
             teacher_model.finish_episode(inference_mode=True)
+
+            if pre_train:
+                max_input_length = torch.max(input_lengths)
+                ars = []
+                for input_length in input_lengths.numpy():
+                    ar = torch.arange(max_input_length+1)
+                    ar[-1] = ar[-2]
+                    if input_length < max_input_length:
+                        ar[-2] = ar[-3]
+                        ar[-1] = ar[-3]
+                    ars.append(ar)
+
+                ars = torch.stack(ars, dim=1)
+                ars = ars.numpy()
+                ars = [torch.LongTensor(ar) for ar in ars]
+                actions = ars
 
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'], attentions=actions)
 

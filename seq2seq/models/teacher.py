@@ -70,7 +70,7 @@ class Teacher(nn.Module):
 
         return action_probs
 
-    def select_actions(self, state, input_lengths, max_decoding_length):
+    def select_actions(self, state, input_lengths, max_decoding_length, mode):
         """
         Summary
 
@@ -80,6 +80,7 @@ class Teacher(nn.Module):
         Returns:
             TYPE: Description
         """
+        assert mode in ['pre_train', 'train', 'eval']
 
         batch_size = state.size(0)
         max_encoding_length = torch.max(input_lengths)
@@ -94,6 +95,8 @@ class Teacher(nn.Module):
         valid_action_mask = encoding_steps < input_lengths_expanded
 
         probabilities = self.forward(state, valid_action_mask, max_decoding_length)
+        # if mode == 'train':
+        #     print probabilities
 
         actions = []
         # TODO: Doesn't take into account mixed lengths in batch
@@ -106,10 +109,10 @@ class Teacher(nn.Module):
 
             import random
             sample = random.random()
-            eps_threshold = 0.9
+            eps_threshold = 0.95
 
             # Pick random action
-            if sample > eps_threshold:
+            if sample > eps_threshold and mode=='train':
                 # We don't need to normalize these to probabilities, as this is already done in Categorical()
                 uniform_probability_current_step = torch.autograd.Variable(valid_action_mask.float())
                 categorical_distribution_uniform = Categorical(probs=uniform_probability_current_step)
@@ -123,7 +126,6 @@ class Teacher(nn.Module):
              
             actions.append(action.data)
 
-        print probabilities
         # print actions
 
         return actions
