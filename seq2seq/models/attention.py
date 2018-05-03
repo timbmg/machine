@@ -76,6 +76,22 @@ class Attention(nn.Module):
         attn.data.masked_fill_(mask, -float('inf'))
 
         attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
+        
+        # In the case of hard-coded attentive guidance with variable length examples in a single batch,
+        # The attention will be on the last encoder state. However, the mask will set this to -inf, which will
+        # make all attention scores -inf. Taking the softmax of this results in NaNs. With the following, we set
+        # all NaNs to zero.
+        # Example:
+        # 001 T1 T2  -> 001 101 111 EOS
+        # 101 T1 PAD -> 101 110 PAD EOS
+        # will have attention scores for the last decoder step:
+        # -inf -inf 1
+        # -inf -inf 1
+        # The mask would set this to
+        # -inf -inf 1
+        # -inf -inf -inf
+        # which results in NaNs
+        attn[attn != attn] = 0
 
         # (batch, out_len, in_len) * (batch, in_len, dim) -> (batch, out_len, dim)
         context = torch.bmm(attn, encoder_states)
@@ -232,6 +248,7 @@ class HardCoded(nn.Module):
                 (enc_seqlen-1) * torch.ones(1, dec_seqlen - enc_seqlen, 1)), dim=1)
 
             indices = indices.expand(batch_size, dec_seqlen, 1).long()
+
 
             # Fill the attention guidance with 1's
             attn = attn.scatter_(dim=2, index=indices, value=1)
