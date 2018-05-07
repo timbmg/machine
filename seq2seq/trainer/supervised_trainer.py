@@ -80,7 +80,8 @@ class SupervisedTrainer(object):
         return losses
 
     def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
-                       dev_data=None, teacher_forcing_ratio=0, top_k=5):
+                       dev_data=None, monitor_data=[], teacher_forcing_ratio=0,
+                       top_k=5):
         log = self.logger
 
         print_loss_total = defaultdict(float)  # Reset every print_every
@@ -102,8 +103,8 @@ class SupervisedTrainer(object):
         step_elapsed = 0
 
         # store initial model to be sure at least one model is stored
-        eval_data = dev_data or data
-        losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
+        val_data = dev_data or data
+        losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
 
         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
@@ -131,10 +132,10 @@ class SupervisedTrainer(object):
             for batch in batch_generator:
                 step += 1
                 step_elapsed += 1
-                    
 
                 input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
+                # compute batch loss
                 losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
 
                 # Record average loss
@@ -143,9 +144,6 @@ class SupervisedTrainer(object):
                     print_loss_total[name] += loss.get_loss()
                     epoch_loss_total[name] += loss.get_loss()
 
-                # print_loss_total += loss TODO remove line
-                # epoch_loss_total += loss TODO remove line
-
                 # print log info according to print_every parm
                 if step % self.print_every == 0 and step_elapsed > self.print_every:
                     for loss in losses:
@@ -153,19 +151,29 @@ class SupervisedTrainer(object):
                         print_loss_avg[name] = print_loss_total[name] / self.print_every
                         print_loss_total[name] = 0
 
-                    loss_msg = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
+                    train_log_msg = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
 
-                    log_msg = 'Progress: %d%%, Train %s' % (
-                        step / total_steps * 100,
-                        loss_msg)
+                    m_logs = {}
+                    # compute vals for all monitored sets
+                    for m_data in monitor_data:
+                        losses, metrics = self.evaluator.evaluate(model, monitor_data[m_data], self.get_batch_data)
+                        total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
+                        m_logs[m_data] = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
+
+                    all_losses = ' '.join(['%s %s' % (name, m_logs[name]) for name in m_logs])
+
+                    log_msg = 'Progress %d%%, Train %s, %s' % (
+                            step / total_steps * 100,
+                            train_log_msg,
+                            all_losses)
+
                     log.info(log_msg)
 
                 # check if new model should be saved
                 if step % self.checkpoint_every == 0 or step == total_steps:
                     # compute dev loss
-                    losses, metrics = self.evaluator.evaluate(model, eval_data, self.get_batch_data)
+                    losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
                     total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
-
 
                     max_eval_loss = max(loss_best)
                     if total_loss < max_eval_loss:
@@ -205,7 +213,7 @@ class SupervisedTrainer(object):
             log.info(log_msg)
 
     def train(self, model, data, num_epochs=5,
-              resume=False, dev_data=None,
+              resume=False, dev_data=None, monitor_data={},
               optimizer=None, teacher_forcing_ratio=0,
               learning_rate=0.001, checkpoint_path=None, top_k=5):
         """ Run training for a given model.
@@ -259,6 +267,7 @@ class SupervisedTrainer(object):
 
         self._train_epoches(data, model, num_epochs,
                             start_epoch, step, dev_data=dev_data,
+                            monitor_data=monitor_data,
                             teacher_forcing_ratio=teacher_forcing_ratio,
                             top_k=top_k)
         return model
