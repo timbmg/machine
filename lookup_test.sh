@@ -2,6 +2,11 @@
 
 TRAIN_PATH=data/lookup-3bit/train.csv
 DEV_PATH=data/lookup-3bit/validation.csv
+TEST1_PATH=data/lookup-3bit/test1_heldout.csv
+TEST2_PATH=data/lookup-3bit/test2_subset.csv
+TEST3_PATH=data/lookup-3bit/test3_hybrid.csv
+TEST4_PATH=data/lookup-3bit/test4_unseen.csv
+TEST5_PATH=data/lookup-3bit/test5_longer.csv
 EXPT_DIR=example
 
 # use small parameters for quicker testing
@@ -31,3 +36,11 @@ python train_model.py \
     --scale_attention_loss 1 \
 	--batch_size $BATCH_SIZE \
 	--optim adam \
+
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TRAIN_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $DEV_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TEST1_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TEST2_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TEST3_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TEST4_PATH
+python evaluate.py --checkpoint_path $EXPT_DIR/$(ls -t $EXPT_DIR/ | head -1) --test_data $TEST5_PATH
