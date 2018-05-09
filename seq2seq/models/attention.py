@@ -77,7 +77,7 @@ class Attention(nn.Module):
 
         attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
         
-        # In the case of hard-coded attentive guidance with variable length examples in a single batch,
+        # In the case of hard attentive guidance with variable length examples in a single batch,
         # The attention will be on the last encoder state. However, the mask will set this to -inf, which will
         # make all attention scores -inf. Taking the softmax of this results in NaNs. With the following, we set
         # all NaNs to zero.
@@ -111,7 +111,7 @@ class Attention(nn.Module):
         elif method == 'dot':
             method = Dot()
         elif method == 'hard':
-            method = HardCoded()
+            method = HardGuidance()
         else:
             return ValueError("Unknown attention method")
 
@@ -206,15 +206,15 @@ class MLP(nn.Module):
         return attn
 
 
-class HardCoded(nn.Module):
+class HardGuidance(nn.Module):
 
     """
-    Hardcoded attention guidance module for the lookup table task (diagonal attentive guidance)
+    Hard attentive guidance module for the lookup table task (diagonal attentive guidance)
     """
 
     def forward(self, decoder_states, encoder_states, **kwargs):
         """
-        Forward pass method. Computes the hard-coded, non-differentiable attentive guidance for
+        Forward pass method. Computes the hard, non-differentiable attentive guidance for
         the lookup tables task. Or any other task that requires a diagonal attentive guidance pattern.
         
         Args:
@@ -232,7 +232,7 @@ class HardCoded(nn.Module):
         batch_size, enc_seqlen, hl_size = encoder_states.size()
         _, dec_seqlen, _                = decoder_states.size()
 
-        # Add hard-coded attention vector for all decoder steps
+        # Add hard guidance attention vector for all decoder steps
         if step == -1:
             # Initialize attention vectors. These are the pre-softmax scores, so any -inf will become 0 (if there is at least value not -inf)
             attn = torch.zeros(batch_size, dec_seqlen, enc_seqlen).fill_(-float('inf'))
@@ -255,7 +255,7 @@ class HardCoded(nn.Module):
             # Fill the attention guidance with 1's
             attn = attn.scatter_(dim=2, index=indices, value=1)
 
-        # Add hard-coded attention vector for only one single unrolled decoder step
+        # Add guidance attention vector for only one single unrolled decoder step
         else:
             # Step should only be passed if we are truly unrolling the decoder and processing it
             # one step at a time.
