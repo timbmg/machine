@@ -88,9 +88,9 @@ class WordAccuracy(Metric):
         for step, step_output in enumerate(outputs):
             target = targets[:, step + 1]
             non_padding = target.ne(self.ignore_index)
-            correct = outputs[step].view(-1).eq(target).masked_select(non_padding).long().sum().data[0]
+            correct = outputs[step].view(-1).eq(target).masked_select(non_padding).long().sum().item()
             self.word_match += correct
-            self.word_total += non_padding.long().sum().data[0]
+            self.word_total += non_padding.long().sum().item()
 
 class FinalTargetAccuracy(Metric):
     """
@@ -147,7 +147,7 @@ class FinalTargetAccuracy(Metric):
                 mask = cur_mask
 
             # compute correct, masking all outputs that are padding or eos, or are not followed by padding or eos
-            correct = cur_step_output.view(-1).eq(target).masked_select(mask).long().sum().data[0]
+            correct = cur_step_output.view(-1).eq(target).masked_select(mask).long().sum().item()
 
             self.target_match += correct
 
@@ -195,9 +195,9 @@ class SequenceAccuracy(Metric):
 
             non_padding = target.ne(self.ignore_index)
 
-            correct_per_seq = (outputs[step].view(-1).eq(target).data + non_padding.data).eq(2)
+            correct_per_seq = (outputs[step].view(-1).eq(target) + non_padding).eq(2)
             match_per_seq += correct_per_seq.type(torch.FloatTensor)
-            total_per_seq += non_padding.type(torch.FloatTensor).data
+            total_per_seq += non_padding.type(torch.FloatTensor)
 
         self.seq_match += match_per_seq.eq(total_per_seq).long().sum()
         self.seq_total += total_per_seq.shape[0]

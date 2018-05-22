@@ -111,16 +111,15 @@ class Evaluator(object):
             device=device, train=False)
 
         # loop over batches
-        for batch in batch_iterator:
+        with torch.no_grad():
+            for batch in batch_iterator:
 
-            input_variable, input_lengths, target_variable = get_batch_data(batch)
-            # input_variable, input_lengths  = getattr(batch, seq2seq.src_field_name)
-            # target_variable = {'decoder_output': getattr(batch, seq2seq.tgt_field_name)}
+                input_variable, input_lengths, target_variable = get_batch_data(batch)
 
-            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'])
+                decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'])
 
-            losses = self.update_loss(losses, decoder_outputs, decoder_hidden, other, target_variable)
+                losses = self.update_loss(losses, decoder_outputs, decoder_hidden, other, target_variable)
 
-            metrics = self.update_batch_metrics(metrics, other, target_variable)
+                metrics = self.update_batch_metrics(metrics, other, target_variable)
 
         return losses, metrics
