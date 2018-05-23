@@ -60,6 +60,6 @@ class Seq2seq(nn.Module):
                               encoder_outputs=encoder_outputs,
                               function=self.decode_function,
                               teacher_forcing_ratio=teacher_forcing_ratio,
-                              provided_attention=provided_attention, attentions=attentions)
+                              provided_attention=provided_attention)
 
         return result

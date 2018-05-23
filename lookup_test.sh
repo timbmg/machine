@@ -6,13 +6,14 @@ BIDIR=false
 PONDERING=false
 USE_ATTENTION_LOSS=false
 
-TRAIN=data/lookup-3bit/train.csv
-DEV=data/lookup-3bit/validation.csv
-TEST_PATH1=data/lookup-3bit/test1_heldout.csv
-TEST_PATH2=data/lookup-3bit/test2_subset.csv
-TEST_PATH3=data/lookup-3bit/test3_hybrid.csv
-TEST_PATH4=data/lookup-3bit/test4_unseen.csv
-TEST_PATH5=data/lookup-3bit/test5_longer.csv
+DATASETS_PATH=../machine-tasks/LookupTables/lookup-3bit/samples/sample1
+TRAIN="${DATASETS_PATH}/train.tsv"
+DEV="${DATASETS_PATH}/validation.tsv"
+TEST_PATH1="${DATASETS_PATH}/heldout_inputs.tsv"
+TEST_PATH2="${DATASETS_PATH}/heldout_tables.tsv"
+TEST_PATH3="${DATASETS_PATH}/longer_compositions_seen.tsv"
+TEST_PATH4="${DATASETS_PATH}/longer_compositions_incremental.tsv"
+TEST_PATH5="${DATASETS_PATH}/longer_compositions_new.tsv"
 OUTPUT_DIR=example
 
 EPOCHS=300
@@ -24,8 +25,8 @@ N_LAYERS=1
 DROPOUT_P_ENCODER=0
 DROPOUT_P_DECODER=0
 TEACHER_FORCING_RATIO=0
-BATCH_SIZE=10
-EVAL_BATCH_SIZE=128
+BATCH_SIZE=2
+EVAL_BATCH_SIZE=2
 OPTIM='adam'
 LR=0.001
 SAVE_EVERY=10000000000000
@@ -37,7 +38,7 @@ echo "Start training"
 python train_model.py \
     --train $TRAIN \
     --pre_train $TRAIN \
-    --dev $TEST_PATH4 \
+    --dev $DEV \
     --output_dir $OUTPUT_DIR \
     --epochs $EPOCHS \
     --max_len $MAX_LEN \

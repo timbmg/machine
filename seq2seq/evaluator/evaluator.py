@@ -122,15 +122,17 @@ class Evaluator(object):
                 # Since we do not have to produce action for SOS we substract 1. Note that some examples in the batch might need less actions
                 # then produced. These should however be ignored for loss/metrics
                 max_decoding_length = target_variable['decoder_output'].size(1) - 1
-                
+
                 actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
                 teacher_model.finish_episode(inference_mode=True)
 
+                # TODO: If pre-train, just use the attentions that are already inside the data
+                # TODO: Do the same in supervised trainer
                 if pre_train:
                     max_input_length = torch.max(input_lengths)
                     ars = []
                     for input_length in input_lengths.numpy():
-                        ar = torch.arange(max_input_length+1)
+                        ar = torch.cat([-1*torch.ones(1), torch.arange(max_input_length+1)])
                         ar[-1] = ar[-2]
                         if input_length < max_input_length:
                             ar[-2] = ar[-3]
@@ -138,9 +140,10 @@ class Evaluator(object):
                         ars.append(ar)
 
                     ars = torch.stack(ars, dim=1)
-                    ars = ars.numpy()
-                    ars = [torch.LongTensor(ar) for ar in ars]
-                    actions = ars
+                    ars = ars.transpose(0,1)
+                    actions = ars.long()
+
+                target_variable['attention_target'] = actions
 
                 decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable, attentions=actions)
 

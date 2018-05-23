@@ -107,6 +107,8 @@ class SupervisedTrainer(object):
                 ars = ars.numpy()
                 ars = [torch.LongTensor(ar) for ar in ars]
                 actions = ars
+            # TODO: Convert actions to variable, prepend SOS, add to target_variables
+            # TODO: Make sure everything is pt4 )no Variables)
 
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
                                                            teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
