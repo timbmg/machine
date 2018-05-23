@@ -1,6 +1,8 @@
 """
 Summary
 """
+from __future__ import print_function, division
+
 import numpy as np
 
 import torch
@@ -192,8 +194,8 @@ class Teacher(nn.Module):
         del self.saved_log_probs[:]
 
         import math
-        if math.isnan(policy_loss.data.numpy()[0]):
-            print "NANNAN"
+        if math.isnan(policy_loss.item()):
+            print("NANNAN")
             exit()
 
         return policy_loss

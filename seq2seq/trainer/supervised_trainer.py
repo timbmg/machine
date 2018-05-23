@@ -64,9 +64,6 @@ class SupervisedTrainer(object):
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_model, teacher_forcing_ratio):
         loss = self.loss
 
-        # Forward propagation
-        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
-
         # Add target attentions to target_variable.
         # TODO: What will happen if --use_attention_loss is also set to True. Will this get overwritten in get_batch_data?
         # TODO: Should this functionality be in get_batch_data?
@@ -92,11 +89,13 @@ class SupervisedTrainer(object):
                 mode = 'train'
             actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len, mode=mode)
 
+            # TODO: If pre-train, just use the attentions that are already inside the data
+            # TODO: Do the same in supervised trainer
             if self.pre_train:
                 max_input_length = torch.max(input_lengths)
                 ars = []
                 for input_length in input_lengths.numpy():
-                    ar = torch.arange(max_input_length+1)
+                    ar = torch.cat([-1*torch.ones(1), torch.arange(max_input_length+1)])
                     ar[-1] = ar[-2]
                     if input_length < max_input_length:
                         ar[-2] = ar[-3]
@@ -104,14 +103,14 @@ class SupervisedTrainer(object):
                     ars.append(ar)
 
                 ars = torch.stack(ars, dim=1)
-                ars = ars.numpy()
-                ars = [torch.LongTensor(ar) for ar in ars]
-                actions = ars
+                ars = ars.transpose(0,1)
+                actions = ars.long()
+
+            target_variable['attention_target'] = actions
             # TODO: Convert actions to variable, prepend SOS, add to target_variables
             # TODO: Make sure everything is pt4 )no Variables)
 
-            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable['decoder_output'],
-                                                           teacher_forcing_ratio=teacher_forcing_ratio, attentions=actions)
+            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
 
             losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
@@ -147,6 +146,9 @@ class SupervisedTrainer(object):
             # For now, we have no reward for all intermediate actions, and only add
             # a reward to the last action, namely the negative loss
             loss_func = torch.nn.NLLLoss(ignore_index=self.target_pad_value, reduce=False)
+            actions = actions.transpose(0,1)
+            # Don't need the SOS here
+            actions = actions[1:]
             for action_iter in range(len(actions)):
                 pred = decoder_outputs[action_iter]
                 # +1 because target_variable includes SOS which the prediction of course doesn't
@@ -264,7 +266,7 @@ class SupervisedTrainer(object):
 
                 input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
-                losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_model, teacher_forcing_ratio)
+                losses = self._train_batch(input_variables, input_lengths, target_variables, model, teacher_model, teacher_forcing_ratio)
 
                 # Record average loss
                 for loss in losses:
