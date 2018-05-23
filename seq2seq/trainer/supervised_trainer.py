@@ -71,37 +71,32 @@ class SupervisedTrainer(object):
         # TODO: Replace this with teacher.get_actions (and call finish_episode?)
         
         if self.teacher_optimizer:
-            # pad_value = -1
-            # max_val = max(input_lengths) + 1
-            # batch_size = input_lengths.size(0)
-            # target_attentions = torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long()
-            # if torch.cuda.is_available():
-            #     target_attentions = target_attentions.cuda()
-            # target_variable['attention_target'] = target_attentions
-
-            # TODO: Why the -1? SOS?
-            # could this be done easier/prettier
-            # Got this from DecoderRNN._validate_args()
-            max_len = target_variable['decoder_output'].size(1) - 1
-            if self.pre_train:
-                mode = 'pre_train'
-            else:
-                mode = 'train'
-            # TODO: Shouldn't have to be executed in pre-train mode?
-            actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len, mode=mode)
-            # Convert list into tensor and make it batch-first
-            actions = torch.stack(actions).transpose(0, 1)
-
             # If pre-training: Use the provided attention indices in the data set for the model.
             # Else: Use the actions of the understander as attention vectors. (prepend -1 for SOS)
-            if not self.pre_train:
+            if self.pre_train:
+                pass
+            else:
+                mode = 'train'
+
+                # TODO: Why the -1? SOS?
+                # could this be done easier/prettier
+                # Got this from DecoderRNN._validate_args()
+                max_len = target_variable['decoder_output'].size(1) - 1
+
+                actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len, mode=mode)
+                # Convert list into tensor and make it batch-first
+                actions = torch.stack(actions).transpose(0, 1)
+
                 batch_size = actions.size(0)
                 target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long), actions], dim=1)
+            
+            # Forward propagation
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
-
             losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
             # Backward propagation
+            # If pre-train: Executor
+            # Else: Understander
             if self.pre_train:
                 for i, loss in enumerate(losses, 0):
                     loss.scale_loss(self.loss_weights[i])
@@ -109,24 +104,28 @@ class SupervisedTrainer(object):
                 self.optimizer.step()
                 model.zero_grad()
 
-            # For now, we have no reward for all intermediate actions, and only add
-            # a reward to the last action, namely the negative loss
-            loss_func = torch.nn.NLLLoss(ignore_index=self.target_pad_value, reduce=False)
-            # TODO: Transpose actions and transpose back.. must be easier
-            actions = actions.transpose(0,1)
-            for action_iter in range(len(actions)):
-                pred = decoder_outputs[action_iter]
-                # +1 because target_variable includes SOS which the prediction of course doesn't
-                ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                import numpy
-                step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().numpy())/3, 0, 1))
+                # Finish episode HAS to be called. However, since we don't add rewards when pre-training,
+                # we pretend we are in inference mode.
+                teacher_model.finish_episode(inference_mode=True)
 
-                teacher_model.rewards.append(step_reward)
+            else:
+                # For now, we have no reward for all intermediate actions, and only add
+                # a reward to the last action, namely the negative loss
+                loss_func = torch.nn.NLLLoss(ignore_index=self.target_pad_value, reduce=False)
+                # TODO: Transpose actions and transpose back.. must be easier
+                actions = actions.transpose(0,1)
+                for action_iter in range(len(actions)):
+                    pred = decoder_outputs[action_iter]
+                    # +1 because target_variable includes SOS which the prediction of course doesn't
+                    ground_truth = target_variable['decoder_output'][:,action_iter+1]
+                    import numpy
+                    step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().numpy())/3, 0, 1))
 
-            # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
-            policy_loss = teacher_model.finish_episode()
+                    teacher_model.rewards.append(step_reward)
 
-            if not self.pre_train:
+                # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
+                policy_loss = teacher_model.finish_episode()
+
                 teacher_model.zero_grad()
                 policy_loss.backward()
                 self.teacher_optimizer.step()
