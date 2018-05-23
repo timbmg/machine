@@ -116,7 +116,7 @@ class Teacher(nn.Module):
             # Pick random action
             if sample > eps_threshold and mode=='train':
                 # We don't need to normalize these to probabilities, as this is already done in Categorical()
-                uniform_probability_current_step = torch.autograd.Variable(valid_action_mask.float())
+                uniform_probability_current_step = torch.FloatTensor(valid_action_mask.float(), requires_grad=False)
                 categorical_distribution_uniform = Categorical(probs=uniform_probability_current_step)
                 action = categorical_distribution_uniform.sample()
 
@@ -126,7 +126,7 @@ class Teacher(nn.Module):
 
             self.saved_log_probs.append(categorical_distribution_policy.log_prob(action))
              
-            actions.append(action.data)
+            actions.append(action)
 
         # print actions
 
@@ -163,7 +163,7 @@ class Teacher(nn.Module):
             R = r + self.gamma * R
             discounted_rewards.insert(0, R.tolist())
 
-        discounted_rewards = torch.Tensor(discounted_rewards)
+        discounted_rewards = torch.tensor(discounted_rewards, requires_grad=False)
 
         # TODO: This doesn't work when reward is negative, right?
         # discounted_rewards = (discounted_rewards - discounted_rewards.mean(dim=0, keepdim=True)) / \
@@ -171,7 +171,6 @@ class Teacher(nn.Module):
 
         # (n_rewards x batch_size) -> (batch_size x n_rewards)
         discounted_rewards = discounted_rewards.transpose(0, 1)
-        discounted_rewards = torch.autograd.Variable(discounted_rewards, requires_grad=False)
 
         # Stack list of length n_rewards with 1D Variables of length batch_size to Variable of (batch_size x n_rewards)
         saved_log_probs = torch.stack(self.saved_log_probs, dim=1)
@@ -255,7 +254,7 @@ class TeacherDecoder(nn.Module):
         # we should roll it to save computation time and have cleaner code.
         for decoder_step in range(output_length):
             # TODO: What should the input to the decoder be?
-            embedding = torch.autograd.Variable(torch.zeros(batch_size, 1, 1))
+            embedding = torch.zeros(batch_size, 1, 1, requires_grad=False)
 
             out, hidden = self.decoder(embedding, hidden)
 
@@ -293,7 +292,7 @@ class TeacherDecoder(nn.Module):
 
         invalid_action_mask = valid_action_mask.ne(1).unsqueeze(1).expand(-1, output_length, -1)
 
-        action_scores.data.masked_fill_(invalid_action_mask, -float('inf'))
+        action_scores.masked_fill_(invalid_action_mask, -float('inf'))
 
         # For each decoder step, take the softmax over all actions to get probs
         # TODO: Does it make sense to use log_softmax such that we don't have to call categorical.log_prob()?

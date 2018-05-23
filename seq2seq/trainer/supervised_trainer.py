@@ -74,7 +74,7 @@ class SupervisedTrainer(object):
             # pad_value = -1
             # max_val = max(input_lengths) + 1
             # batch_size = input_lengths.size(0)
-            # target_attentions = Variable(torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long())
+            # target_attentions = torch.cat(tuple([torch.cat((torch.ones(1), torch.arange(l), pad_value*torch.ones(max_val-l)), 0) for l in input_lengths]), 0).view(batch_size, max_val+1).long()
             # if torch.cuda.is_available():
             #     target_attentions = target_attentions.cuda()
             # target_variable['attention_target'] = target_attentions
