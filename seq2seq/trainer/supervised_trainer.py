@@ -97,7 +97,6 @@ class SupervisedTrainer(object):
             if not self.pre_train:
                 batch_size = actions.size(0)
                 target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long), actions], dim=1)
-                print(actions)
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
 
             losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
@@ -141,7 +140,7 @@ class SupervisedTrainer(object):
                 # +1 because target_variable includes SOS which the prediction of course doesn't
                 ground_truth = target_variable['decoder_output'][:,action_iter+1]
                 import numpy
-                step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).data.numpy())/3, 0, 1))
+                step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().numpy())/3, 0, 1))
 
                 teacher_model.rewards.append(step_reward)
 

@@ -214,6 +214,7 @@ class HardGuidance(nn.Module):
         _,          dec_seqlen, _ = decoder_states.size()
 
         attention_indices = provided_attention.detach()
+        
         # If we have shorter examples in a batch, attend the PAD outputs to the first encoder state
         attention_indices.masked_fill_(attention_indices.eq(-1), 0)
 
