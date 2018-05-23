@@ -7,6 +7,8 @@ import seq2seq
 from seq2seq.loss import NLLLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class Evaluator(object):
     """ Class to evaluate models with given datasets.
 
@@ -107,11 +109,11 @@ class Evaluator(object):
             metric.reset()
 
         # create batch iterator
-        device = None if torch.cuda.is_available() else -1
+        iterator_device = None if torch.cuda.is_available() else -1
         batch_iterator = torchtext.data.BucketIterator(
             dataset=data, batch_size=self.batch_size,
             sort=True, sort_key=lambda x: len(x.src),
-            device=device, train=False)
+            device=iterator_device, train=False)
 
         # loop over batches
         with torch.no_grad():
@@ -133,7 +135,7 @@ class Evaluator(object):
                 # Else: Use the actions of the understander as attention vectors. (prepend -1 for SOS)
                 if not pre_train:
                     batch_size = actions.size(0)
-                    target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long), actions], dim=1)
+                    target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
 
                 decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable, attentions=actions)
 

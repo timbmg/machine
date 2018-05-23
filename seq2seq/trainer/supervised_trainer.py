@@ -20,6 +20,8 @@ from seq2seq.optim import Optimizer
 from seq2seq.util.checkpoint import Checkpoint
 from seq2seq.util.log import Log
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class SupervisedTrainer(object):
     """ The SupervisedTrainer class helps in setting up a training framework in a
     supervised setting.
@@ -88,7 +90,7 @@ class SupervisedTrainer(object):
                 actions = torch.stack(actions).transpose(0, 1)
 
                 batch_size = actions.size(0)
-                target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long), actions], dim=1)
+                target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
             
             # Forward propagation
             decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
@@ -119,7 +121,7 @@ class SupervisedTrainer(object):
                     # +1 because target_variable includes SOS which the prediction of course doesn't
                     ground_truth = target_variable['decoder_output'][:,action_iter+1]
                     import numpy
-                    step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().numpy())/3, 0, 1))
+                    step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().cpu().numpy())/3, 0, 1))
 
                     teacher_model.rewards.append(step_reward)
 
@@ -153,18 +155,18 @@ class SupervisedTrainer(object):
         epoch_loss_avg = defaultdict(float)
         print_loss_avg = defaultdict(float)
 
-        device = None if torch.cuda.is_available() else -1
+        iterator_device = None if torch.cuda.is_available() else -1
         batch_iterator_train = torchtext.data.BucketIterator(
             dataset=data, batch_size=self.batch_size,
             sort=False, sort_within_batch=True,
             sort_key=lambda x: len(x.src),
-            device=device, repeat=False)
+            device=iterator_device, repeat=False)
 
         batch_iterator_pre_train = torchtext.data.BucketIterator(
             dataset=pre_train, batch_size=self.batch_size,
             sort=False, sort_within_batch=True,
             sort_key=lambda x: len(x.src),
-            device=device, repeat=False)
+            device=iterator_device, repeat=False)
 
         steps_per_epoch = len(batch_iterator_train)
         total_steps = steps_per_epoch * n_epochs

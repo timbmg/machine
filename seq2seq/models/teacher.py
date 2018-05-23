@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Currently implemented as recurrent LSTM model (not seq2seq)
 
 
@@ -91,7 +93,7 @@ class Teacher(nn.Module):
         input_lengths_expanded = input_lengths.unsqueeze(1).expand(-1, max_encoding_length)
 
         # Use arange to create list 0, 1, 2, 3, .. for each element in the batch
-        encoding_steps = torch.arange(max_encoding_length).long().unsqueeze(0).expand(batch_size, -1)
+        encoding_steps = torch.arange(max_encoding_length, dtype=torch.long, device=device).unsqueeze(0).expand(batch_size, -1)
 
         # A (batch_size x max_encoding_length) tensor that has a 1 for all valid actions and 0 for all invalid actions
         valid_action_mask = encoding_steps < input_lengths_expanded
@@ -163,7 +165,7 @@ class Teacher(nn.Module):
             R = r + self.gamma * R
             discounted_rewards.insert(0, R.tolist())
 
-        discounted_rewards = torch.tensor(discounted_rewards, requires_grad=False)
+        discounted_rewards = torch.tensor(discounted_rewards, requires_grad=False, device=device)
 
         # TODO: This doesn't work when reward is negative, right?
         # discounted_rewards = (discounted_rewards - discounted_rewards.mean(dim=0, keepdim=True)) / \
@@ -254,7 +256,7 @@ class TeacherDecoder(nn.Module):
         # we should roll it to save computation time and have cleaner code.
         for decoder_step in range(output_length):
             # TODO: What should the input to the decoder be?
-            embedding = torch.zeros(batch_size, 1, 1, requires_grad=False)
+            embedding = torch.zeros(batch_size, 1, 1, requires_grad=False, device=device)
 
             out, hidden = self.decoder(embedding, hidden)
 
