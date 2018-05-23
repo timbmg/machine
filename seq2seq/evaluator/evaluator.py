@@ -126,24 +126,14 @@ class Evaluator(object):
                 actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
                 teacher_model.finish_episode(inference_mode=True)
 
-                # TODO: If pre-train, just use the attentions that are already inside the data
-                # TODO: Do the same in supervised trainer
-                if pre_train:
-                    max_input_length = torch.max(input_lengths)
-                    ars = []
-                    for input_length in input_lengths.numpy():
-                        ar = torch.cat([-1*torch.ones(1), torch.arange(max_input_length+1)])
-                        ar[-1] = ar[-2]
-                        if input_length < max_input_length:
-                            ar[-2] = ar[-3]
-                            ar[-1] = ar[-3]
-                        ars.append(ar)
+                # Convert list into tensor and make it batch-first
+                actions = torch.stack(actions).transpose(0, 1)
 
-                    ars = torch.stack(ars, dim=1)
-                    ars = ars.transpose(0,1)
-                    actions = ars.long()
-
-                target_variable['attention_target'] = actions
+                # If pre-training: Use the provided attention indices in the data set for the model.
+                # Else: Use the actions of the understander as attention vectors. (prepend -1 for SOS)
+                if not pre_train:
+                    batch_size = actions.size(0)
+                    target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long), actions], dim=1)
 
                 decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable, attentions=actions)
 

@@ -6,7 +6,7 @@ BIDIR=false
 PONDERING=false
 USE_ATTENTION_LOSS=false
 
-DATASETS_PATH=../machine-tasks/LookupTables/lookup-3bit/samples/sample1
+DATASETS_PATH=../machine-tasks/LookupTables/lookup-3bit/samples/sample1/eos_removed
 TRAIN="${DATASETS_PATH}/train.tsv"
 DEV="${DATASETS_PATH}/validation.tsv"
 TEST_PATH1="${DATASETS_PATH}/heldout_inputs.tsv"

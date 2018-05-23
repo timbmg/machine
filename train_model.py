@@ -123,7 +123,7 @@ train = torchtext.data.TabularDataset(
 if opt.pre_train:
   pre_train = torchtext.data.TabularDataset(
       path=opt.pre_train, format='tsv',
-      fields=[('src', src), ('tgt', tgt)],
+      fields=tabular_data_fields,
       filter_pred=len_filter
   )
 else:

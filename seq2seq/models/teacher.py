@@ -116,7 +116,7 @@ class Teacher(nn.Module):
             # Pick random action
             if sample > eps_threshold and mode=='train':
                 # We don't need to normalize these to probabilities, as this is already done in Categorical()
-                uniform_probability_current_step = torch.FloatTensor(valid_action_mask.float(), requires_grad=False)
+                uniform_probability_current_step = valid_action_mask.float()
                 categorical_distribution_uniform = Categorical(probs=uniform_probability_current_step)
                 action = categorical_distribution_uniform.sample()
 
