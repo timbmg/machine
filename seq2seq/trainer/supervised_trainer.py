@@ -101,27 +101,6 @@ class SupervisedTrainer(object):
 
             losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
-            # # TODO: Calculate actual reward
-            # if actions[0] == 0:
-            #     teacher_model.rewards.append(1)
-            # else:
-            #     teacher_model.rewards.append(0)
-
-            # if actions[1] == 1:
-            #     teacher_model.rewards.append(1)
-            # else:
-            #     teacher_model.rewards.append(0)
-
-            # if len(actions) >= 3 and actions[2] == 2:
-            #     teacher_model.rewards.append(1)
-            # elif len(actions) >= 3:
-            #     teacher_model.rewards.append(0)
-
-            # if len(actions) >= 4 and actions[2] == 2:
-            #     teacher_model.rewards.append(1)
-            # elif len(actions) >= 4:
-            #     teacher_model.rewards.append(0)
-
             # Backward propagation
             if self.pre_train:
                 for i, loss in enumerate(losses, 0):
