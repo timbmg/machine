@@ -209,7 +209,7 @@ teacher_model = Teacher(
     input_vocab_size=len(src.vocab),
     embedding_dim=opt.embedding_size,
     hidden_dim=hidden_size,
-    gamma=0.9)
+    gamma=0.1)
 if torch.cuda.is_available():
   teacher_model.cuda()
 # TODO: Make sure we set to train() and eval() correctly

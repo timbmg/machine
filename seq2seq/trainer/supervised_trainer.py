@@ -197,7 +197,7 @@ class SupervisedTrainer(object):
         for epoch in range(start_epoch, n_epochs + 1):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
-            if epoch < 100:
+            if epoch < n_epochs/2:
                 self.pre_train = True
                 batch_generator = batch_iterator_pre_train.__iter__()
 
