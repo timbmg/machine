@@ -64,85 +64,81 @@ class SupervisedTrainer(object):
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_model, teacher_forcing_ratio):
         loss = self.loss
-
-        # Add target attentions to target_variable.
-        # TODO: What will happen if --use_attention_loss is also set to True. Will this get overwritten in get_batch_data?
-        # TODO: Should this functionality be in get_batch_data?
-        # TODO: Or do we even still need get_batch_data? Maybe everything can just be done here?
-        # TODO: Replace this with teacher.get_actions (and call finish_episode?)
         
-        if self.teacher_optimizer:
-            # If pre-training: Use the provided attention indices in the data set for the model.
-            # Else: Use the actions of the understander as attention vectors. (prepend -1 for SOS)
-            if self.pre_train:
-                pass
-            else:
-                mode = 'train'
+        # First we perform the forward pass for the understander (if we are not in pre-training)
 
-                # TODO: Why the -1? SOS?
-                # could this be done easier/prettier
-                # Got this from DecoderRNN._validate_args()
-                max_len = target_variable['decoder_output'].size(1) - 1
+        if not self.pre_train:
+            mode = 'train'
 
-                actions = teacher_model.select_actions(state=input_variable, input_lengths=input_lengths, max_decoding_length=max_len, mode=mode)
-                # Convert list into tensor and make it batch-first
-                actions = torch.stack(actions).transpose(0, 1)
+            # We should provide an attention target / action for each decoder output. The target
+            # however also includes the SOS. Hence the -1
+            max_len = target_variable['decoder_output'].size(1) - 1
 
-                batch_size = actions.size(0)
-                target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
+            # Make understander select actions
+            actions = teacher_model.select_actions(
+                state=input_variable,
+                input_lengths=input_lengths,
+                max_decoding_length=max_len,
+                mode=mode)
+
+            # Convert list into tensor and make it batch-first
+            actions = torch.stack(actions).transpose(0, 1)
+            # Prepend -1 for the SOS step
+            batch_size = actions.size(0)
+            actions = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
             
-            # Forward propagation
-            decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
-            losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+            # In pre-training mode, the attention targets are provided (by the data set)
+            # However in training mode, we overwrite this with the actions of the understander
+            target_variable['attention_target'] = actions
+        
+        # Now we perform forward propagation of the model / executor. Attention (targets) are provided
+        # by the data or by the understander, depending on the train mode.
+        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
+        
+        # Calculate the losses of the executor
+        losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
-            # Backward propagation
-            # If pre-train: Executor
-            # Else: Understander
-            if self.pre_train:
-                for i, loss in enumerate(losses, 0):
-                    loss.scale_loss(self.loss_weights[i])
-                    loss.backward(retain_graph=True)
-                self.optimizer.step()
-                model.zero_grad()
+        # Now we perform backpropagation.
+        # In the case of pre-training, we only back-propagate through the executor.
+        # In training mode, only the understander (with RL)
+        if self.pre_train:
+            for i, loss in enumerate(losses, 0):
+                loss.scale_loss(self.loss_weights[i])
+                loss.backward(retain_graph=True)
+            self.optimizer.step()
+            model.zero_grad()
 
-                # Finish episode HAS to be called. However, since we don't add rewards when pre-training,
-                # we pretend we are in inference mode.
-                teacher_model.finish_episode(inference_mode=True)
-
-            else:
-                # For now, we have no reward for all intermediate actions, and only add
-                # a reward to the last action, namely the negative loss
-                # TODO: Loss should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
-                loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
-                # TODO: Transpose actions and transpose back.. must be easier
-                actions = actions.transpose(0,1)
-                for action_iter in range(len(actions)):
-                    pred = decoder_outputs[action_iter]
-                    # +1 because target_variable includes SOS which the prediction of course doesn't
-                    ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                    import numpy
-                    step_reward = list(numpy.clip((3-loss_func(pred, ground_truth).detach().cpu().numpy())/3, 0, 1))
-
-                    teacher_model.rewards.append(step_reward)
-
-                # TODO: What happens if we don't call this? Or choose actions twice before we make this call?
-                policy_loss = teacher_model.finish_episode()
-
-                teacher_model.zero_grad()
-                policy_loss.backward()
-                self.teacher_optimizer.step()
+            # Finish episode HAS to be called. However, since we don't add rewards when pre-training,
+            # we pretend we are in inference mode.
+            teacher_model.finish_episode(inference_mode=True)
 
         else:
-            print("No teacher optimzer")
+            # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
+            # Actually, I think we should use word accuracy for the reward function of the understander.
+            # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
+            loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
 
-        # losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
+            for action_iter in range(len(decoder_outputs)):
+                prediction = decoder_outputs[action_iter]
+                # +1 because target_variable includes SOS which the prediction of course doesn't
+                ground_truth = target_variable['decoder_output'][:,action_iter+1]
+                
+                # Since loss is usually in range [0-3], where a loss of 0 should give the highest reward to the undestander,
+                # we use as reward function: (1/3) * (3-loss).
+                # This is because RL seems to be very unstable when we allow negative rewards. We even clip the rewards
+                # to [0,1] to make sure this doesn't happen
+                import numpy
+                step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
 
-        # # Backward propagation
-        # for i, loss in enumerate(losses, 0):
-        #     loss.scale_loss(self.loss_weights[i])
-        #     loss.backward(retain_graph=True)
-        # self.optimizer.step()
-        # model.zero_grad()
+                teacher_model.rewards.append(step_reward)
+
+            # Calculate discounted rewards and policy loss
+            policy_loss = teacher_model.finish_episode()
+
+            # Update understander
+            teacher_model.zero_grad()
+            policy_loss.backward()
+            self.teacher_optimizer.step()
 
         return losses
 
@@ -197,26 +193,16 @@ class SupervisedTrainer(object):
         for epoch in range(start_epoch, n_epochs + 1):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
+            # First 50% of epochs we are in pre-train. The next we are in train mode
             if epoch < n_epochs/2:
                 self.pre_train = True
                 batch_generator = batch_iterator_pre_train.__iter__()
 
             else:
                 if self.pre_train:
-                    raw_input()
-                # raw_input()
+                    raw_input("Pre-training is done. Press enter to start training the undestander")
                 self.pre_train = False
                 batch_generator = batch_iterator_train.__iter__()
-
-            # Reset model's parameters after some amount of epochs
-                # for mod in model.modules():
-                #     if isinstance(mod, seq2seq.models.EncoderRNN) or isinstance(mod, seq2seq.models.DecoderRNN):
-                #         for mod2 in mod.modules():
-                #             if not isinstance(mod2, seq2seq.models.EncoderRNN) and not isinstance(mod2, seq2seq.models.DecoderRNN) and not isinstance(mod2, torch.nn.modules.dropout.Dropout) and not isinstance(mod2, seq2seq.models.attention.Attention) and not isinstance(mod2, seq2seq.models.attention.HardCoded):
-                #                 mod2.reset_parameters()
-
-                #     elif not isinstance(mod, seq2seq.models.seq2seq.Seq2seq) and not isinstance(mod, torch.nn.modules.dropout.Dropout) and not isinstance(mod, seq2seq.models.attention.Attention) and not isinstance(mod, seq2seq.models.attention.HardCoded):
-                #         mod.reset_parameters()
 
             # batch_generator = batch_iterator.__iter__()
 
@@ -370,15 +356,11 @@ class SupervisedTrainer(object):
                            None:optim.Adam}
                 return optims[optim_name]
 
-            self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),
-                                       max_grad_norm=5)
-            # TODO: Should not be hard-coded
-            self.teacher_optimizer = Optimizer(get_optim('adam')(teacher_model.parameters(), lr=learning_rate), max_grad_norm=5)
+            self.optimizer = Optimizer(get_optim(optimizer)(model.parameters(), lr=learning_rate),max_grad_norm=5)
+            self.teacher_optimizer = Optimizer(get_optim(optimizer)(teacher_model.parameters(), lr=learning_rate), max_grad_norm=5)
 
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
-        # TODO: Should we also use container Optimzer class?
-        # if self.teacher_optimizer:
-        #     self.logger.info("Teacher optimizer: %s, scheduler: %s" % (self.teacher_optimizer.optimizer, self.teacher_optimizer.scheduler))
+        self.logger.info("Teacher optimizer: %s, scheduler: %s" % (self.teacher_optimizer.optimizer, self.teacher_optimizer.scheduler))
 
         logs = self._train_epoches(data, model, teacher_model, num_epochs,
                             start_epoch, step, pre_train=pre_train, dev_data=dev_data,

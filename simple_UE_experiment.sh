@@ -6,7 +6,7 @@ BIDIR=false
 PONDERING=false
 USE_ATTENTION_LOSS=false
 
-DATASETS_PATH=../machine-tasks/LookupTables/lookup-3bit/samples/sample1/eos_removed
+DATASETS_PATH=../machine-tasks/LookupTables/lookup-3bit/samples/sample1
 TRAIN="${DATASETS_PATH}/train.tsv"
 DEV="${DATASETS_PATH}/validation.tsv"
 TEST_PATH1="${DATASETS_PATH}/heldout_inputs.tsv"
@@ -16,7 +16,7 @@ TEST_PATH4="${DATASETS_PATH}/longer_compositions_incremental.tsv"
 TEST_PATH5="${DATASETS_PATH}/longer_compositions_new.tsv"
 OUTPUT_DIR=example
 
-EPOCHS=100
+EPOCHS=10
 MAX_LEN=50
 RNN_CELL='lstm'
 EMBEDDING_SIZE=300
@@ -58,4 +58,5 @@ python train_model.py \
     --print_every $PRINT_EVERY \
     --attention $ATTENTION \
     --attention_method $ATTTENTION_METHOD \
-    --gamma $GAMMA
+    --gamma $GAMMA \
+    --ignore_output_eos

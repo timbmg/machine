@@ -65,7 +65,7 @@ parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device 
 
 # Arguments for the UE model
 parser.add_argument('--pre_train', help='Data for pre-training the executor')
-parser.add_argument('--gamma', help='Gamma to use for discounted future rewards', default=0.99)
+parser.add_argument('--gamma', type=float, default=0.99, help='Gamma to use for discounted future rewards')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
