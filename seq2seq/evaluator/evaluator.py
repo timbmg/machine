@@ -120,27 +120,29 @@ class Evaluator(object):
             for batch in batch_iterator:
                 input_variable, input_lengths, target_variable = get_batch_data(batch)
 
-                # max_len is the maximum number of action the understander has to produce. target_variable holds both SOS and EOS.
-                # Since we do not have to produce action for SOS we substract 1. Note that some examples in the batch might need less actions
-                # then produced. These should however be ignored for loss/metrics
-                max_decoding_length = target_variable['decoder_output'].size(1) - 1
-
-                actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
-                teacher_model.finish_episode(inference_mode=True)
-
-                # Convert list into tensor and make it batch-first
-                actions = torch.stack(actions).transpose(0, 1)
-
                 # If pre-training: Use the provided attention indices in the data set for the model.
                 # Else: Use the actions of the understander as attention vectors. (prepend -1 for SOS)
                 if not pre_train:
+                    # max_len is the maximum number of action the understander has to produce. target_variable holds both SOS and EOS.
+                    # Since we do not have to produce action for SOS we substract 1. Note that some examples in the batch might need less actions
+                    # then produced. These should however be ignored for loss/metrics
+                    max_decoding_length = target_variable['decoder_output'].size(1) - 1
+
+                    actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
+                    teacher_model.finish_episode(inference_mode=True)
+
+                    # Convert list into tensor and make it batch-first
+                    actions = torch.stack(actions).transpose(0, 1)
+
                     batch_size = actions.size(0)
                     target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
 
-                decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable, attentions=actions)
+
+                decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable)
 
                 # Compute metric(s) over one batch
-                metrics = self.update_batch_metrics(metrics, other, target_variable)                
+                metrics = self.update_batch_metrics(metrics, other, target_variable)  
+
                 # Compute loss(es) over one batch
                 losses = self.update_loss(losses, decoder_outputs, decoder_hidden, other, target_variable)
 

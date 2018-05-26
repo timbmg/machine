@@ -124,7 +124,6 @@ class DecoderRNN(BaseRNN):
             hidden: The hidden state at every time step of the decoder RNN
             attn: The attention distribution at every time step of the decoder RNN
         """
-
         batch_size = input_var.size(0)
         output_size = input_var.size(1)
         embedded = self.embedding(input_var)
@@ -136,7 +135,6 @@ class DecoderRNN(BaseRNN):
                 h, c = hidden
             # Apply the attention method to get the attention vector and weighted context vector. Provide decoder step for hard attention
             context, attn = self.attention(h[-1:].transpose(0,1), encoder_outputs, **attention_method_kwargs) # transpose to get batch at the second index
-
             combined_input = torch.cat((context, embedded), dim=2)
             if self.full_focus:
                 merged_input = F.relu(self.ffocus_merge(combined_input))
@@ -159,6 +157,7 @@ class DecoderRNN(BaseRNN):
 
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
                     function=F.log_softmax, teacher_forcing_ratio=0, provided_attention=None):
+        
         ret_dict = dict()
         if self.use_attention:
             ret_dict[DecoderRNN.KEY_ATTN_SCORE] = list()
@@ -181,7 +180,7 @@ class DecoderRNN(BaseRNN):
             symbols = decoder_outputs[-1].topk(1)[1]
             sequence_symbols.append(symbols)
 
-            eos_batches = symbols.eq(self.eos_id)
+            eos_batches = symbols.data.eq(self.eos_id)
             if eos_batches.dim() > 0:
                 eos_batches = eos_batches.cpu().view(-1).numpy()
                 update_idx = ((lengths > step) & eos_batches) != 0

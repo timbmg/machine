@@ -8,7 +8,6 @@ import shutil
 import torch
 import torchtext
 from torch import optim
-from torch.autograd import Variable
 
 from collections import defaultdict
 

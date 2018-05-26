@@ -214,8 +214,7 @@ class HardGuidance(nn.Module):
         batch_size, enc_seqlen, _ = encoder_states.size()
         _,          dec_seqlen, _ = decoder_states.size()
 
-        attention_indices = provided_attention.detach()
-        
+        attention_indices = provided_attention.detach()        
         # If we have shorter examples in a batch, attend the PAD outputs to the first encoder state
         attention_indices.masked_fill_(attention_indices.eq(-1), 0)
 
@@ -229,7 +228,7 @@ class HardGuidance(nn.Module):
         attention_indices = attention_indices.contiguous().view(batch_size, -1, 1)
         # Initialize attention vectors. These are the pre-softmax scores, so any
         # -inf will become 0 (if there is at least one value not -inf)
-        attention_scores = torch.full([batch_size, dec_seqlen, enc_seqlen], -float('inf'), device=device)
+        attention_scores = torch.full([batch_size, dec_seqlen, enc_seqlen], fill_value=-float('inf'), device=device)
         attention_scores = attention_scores.scatter_(dim=2, index=attention_indices, value=1)
         attention_scores = attention_scores
 
