@@ -16,7 +16,7 @@ TEST_PATH4="${DATASETS_PATH}/longer_compositions_incremental.tsv"
 TEST_PATH5="${DATASETS_PATH}/longer_compositions_new.tsv"
 OUTPUT_DIR=example
 
-EPOCHS=10
+EPOCHS=3
 MAX_LEN=50
 RNN_CELL='lstm'
 EMBEDDING_SIZE=300
@@ -34,6 +34,7 @@ PRINT_EVERY=99999999999999
 ATTENTION='post-rnn'
 ATTTENTION_METHOD='hard'
 GAMMA=0.1
+EPSILON=0.95
 
 echo "Start training"
 python train_model.py \
@@ -59,4 +60,5 @@ python train_model.py \
     --attention $ATTENTION \
     --attention_method $ATTTENTION_METHOD \
     --gamma $GAMMA \
-    --ignore_output_eos
+    --ignore_output_eos \
+    --epsilon $EPSILON

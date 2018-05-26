@@ -36,7 +36,7 @@ class SupervisedTrainer(object):
     """
     def __init__(self, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64, eval_batch_size=128,
                  random_seed=None,
-                 checkpoint_every=100, print_every=100):
+                 checkpoint_every=100, print_every=100, epsilon=1):
         self._trainer = "Simple Trainer"
         self.random_seed = random_seed
         if random_seed is not None:
@@ -60,7 +60,9 @@ class SupervisedTrainer(object):
         self.batch_size = batch_size
 
         self.logger = logging.getLogger(__name__)
+
         self.pre_train=True
+        self.epsilon = epsilon
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, teacher_model, teacher_forcing_ratio):
         loss = self.loss
@@ -79,11 +81,9 @@ class SupervisedTrainer(object):
                 state=input_variable,
                 input_lengths=input_lengths,
                 max_decoding_length=max_len,
-                mode=mode)
+                epsilon=self.epsilon)
 
-            # Convert list into tensor and make it batch-first
-            actions = torch.stack(actions).transpose(0, 1)
-            # Prepend -1 for the SOS step
+            # Prepend -1 to the actions for the SOS step
             batch_size = actions.size(0)
             actions = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
             
@@ -108,9 +108,7 @@ class SupervisedTrainer(object):
             self.optimizer.step()
             model.zero_grad()
 
-            # Finish episode HAS to be called. However, since we don't add rewards when pre-training,
-            # we pretend we are in inference mode.
-            teacher_model.finish_episode(inference_mode=True)
+            teacher_model.finish_episode()
 
         else:
             # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
@@ -118,6 +116,7 @@ class SupervisedTrainer(object):
             # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
             loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
 
+            rewards = []
             for action_iter in range(len(decoder_outputs)):
                 prediction = decoder_outputs[action_iter]
                 # +1 because target_variable includes SOS which the prediction of course doesn't
@@ -130,7 +129,9 @@ class SupervisedTrainer(object):
                 import numpy
                 step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
 
-                teacher_model.rewards.append(step_reward)
+                rewards.append(step_reward)
+
+            teacher_model.set_rewards(rewards)
 
             # Calculate discounted rewards and policy loss
             policy_loss = teacher_model.finish_episode()

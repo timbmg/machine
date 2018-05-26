@@ -66,6 +66,7 @@ parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device 
 # Arguments for the UE model
 parser.add_argument('--pre_train', help='Data for pre-training the executor')
 parser.add_argument('--gamma', type=float, default=0.99, help='Gamma to use for discounted future rewards')
+parser.add_argument('--epsilon', type=float, default=1, help='Epsilon to use for epsilon-greedy during RL training.')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -253,7 +254,9 @@ t = SupervisedTrainer(loss=losses, metrics=metrics,
                       batch_size=opt.batch_size,
                       eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
-                      print_every=opt.print_every, expt_dir=opt.output_dir)
+                      print_every=opt.print_every,
+                      expt_dir=opt.output_dir,
+                      epsilon=opt.epsilon)
 
 seq2seq, logs = t.train(model=seq2seq,
                   teacher_model=teacher_model,

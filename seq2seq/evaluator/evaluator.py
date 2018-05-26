@@ -129,15 +129,16 @@ class Evaluator(object):
                     # then produced. These should however be ignored for loss/metrics
                     max_decoding_length = target_variable['decoder_output'].size(1) - 1
 
-                    actions = teacher_model.select_actions(input_variable, input_lengths, max_decoding_length, 'eval')
-                    teacher_model.finish_episode(inference_mode=True)
+                    actions = teacher_model.select_actions(
+                        state=input_variable,
+                        input_lengths=input_lengths,
+                        max_decoding_length=max_decoding_length,
+                        epsilon=1)
+                    teacher_model.finish_episode()
 
-                    # Convert list into tensor and make it batch-first
-                    actions = torch.stack(actions).transpose(0, 1)
-
+                    # Prepend -1 to the actions for the SOS step
                     batch_size = actions.size(0)
                     target_variable['attention_target'] = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
-
 
                 decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths.tolist(), target_variable)
 
