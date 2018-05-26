@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, Teacher
+from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, Understander
 from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
@@ -205,15 +205,15 @@ output_vocabulary = output_vocab.itos
 
 
 #################################
-##### PREPARE Teacher MODEL #####
+##### PREPARE Understander MODEL #####
 #################################
-teacher_model = Teacher(
+understander_model = Understander(
     input_vocab_size=len(src.vocab),
     embedding_dim=opt.embedding_size,
     hidden_dim=hidden_size,
     gamma=opt.gamma)
 if torch.cuda.is_available():
-  teacher_model.cuda()
+  understander_model.cuda()
 
 ##############################################################################
 # train model
@@ -259,7 +259,7 @@ t = SupervisedTrainer(loss=losses, metrics=metrics,
                       epsilon=opt.epsilon)
 
 seq2seq, logs = t.train(model=seq2seq,
-                  teacher_model=teacher_model,
+                  understander_model=understander_model,
                   data=train,
                   dev_data=dev,
                   monitor_data=monitor_data,

@@ -84,7 +84,7 @@ class Evaluator(object):
 
         return losses
 
-    def evaluate(self, model, teacher_model, data, get_batch_data, pre_train):
+    def evaluate(self, model, understander_model, data, get_batch_data, pre_train):
         """ Evaluate a model on given dataset and return performance.
 
         Args:
@@ -99,7 +99,7 @@ class Evaluator(object):
         # after this method.
         previous_train_mode = model.training
         model.eval()
-        teacher_model.eval()
+        understander_model.eval()
 
         losses = self.losses
         for loss in losses:
@@ -129,12 +129,12 @@ class Evaluator(object):
                     # then produced. These should however be ignored for loss/metrics
                     max_decoding_length = target_variable['decoder_output'].size(1) - 1
 
-                    actions = teacher_model.select_actions(
+                    actions = understander_model.select_actions(
                         state=input_variable,
                         input_lengths=input_lengths,
                         max_decoding_length=max_decoding_length,
                         epsilon=1)
-                    teacher_model.finish_episode()
+                    understander_model.finish_episode()
 
                     # Prepend -1 to the actions for the SOS step
                     batch_size = actions.size(0)
