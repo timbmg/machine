@@ -27,7 +27,6 @@ except NameError:
     raw_input = input  # Python 3
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--pre_train', help='Pre-training data')
 parser.add_argument('--train', help='Training data')
 parser.add_argument('--dev', help='Development data')
 parser.add_argument('--monitor', nargs='+', default=[], help='Data to monitor during training')
@@ -63,6 +62,10 @@ parser.add_argument('--resume', action='store_true', help='Indicates if training
 parser.add_argument('--log-level', default='info', help='Logging level.')
 parser.add_argument('--write-logs', help='Specify file to write logs to after training')
 parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device to use')
+
+# Arguments for the UE model
+parser.add_argument('--pre_train', help='Data for pre-training the executor')
+parser.add_argument('--gamma', help='Gamma to use for discounted future rewards', default=0.99)
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -120,7 +123,7 @@ train = torchtext.data.TabularDataset(
     filter_pred=len_filter
 )
 
-if opt.pre_train:
+if opt.pre_train is not None:
   pre_train = torchtext.data.TabularDataset(
       path=opt.pre_train, format='tsv',
       fields=tabular_data_fields,
@@ -199,8 +202,6 @@ else:
 input_vocabulary = input_vocab.itos
 output_vocabulary = output_vocab.itos
 
-print input_vocabulary
-print output_vocabulary
 
 #################################
 ##### PREPARE Teacher MODEL #####
@@ -209,23 +210,9 @@ teacher_model = Teacher(
     input_vocab_size=len(src.vocab),
     embedding_dim=opt.embedding_size,
     hidden_dim=hidden_size,
-    gamma=0.1)
+    gamma=opt.gamma)
 if torch.cuda.is_available():
   teacher_model.cuda()
-# TODO: Make sure we set to train() and eval() correctly
-
-# random.seed(3)
-
-# print "Input vocabulary:"
-# for i, word in enumerate(input_vocabulary):
-#     print i, word
-# 
-# print "Output vocabulary:"
-# for i, word in enumerate(output_vocabulary):
-#     print i, word
-# 
-# raw_input()
-# 
 
 ##############################################################################
 # train model
@@ -267,8 +254,7 @@ t = SupervisedTrainer(loss=losses, metrics=metrics,
                       eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
-#TODO: What is this? 
-t.target_pad_value=pad
+
 seq2seq, logs = t.train(model=seq2seq,
                   teacher_model=teacher_model,
                   data=train,

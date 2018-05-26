@@ -112,7 +112,8 @@ class SupervisedTrainer(object):
             else:
                 # For now, we have no reward for all intermediate actions, and only add
                 # a reward to the last action, namely the negative loss
-                loss_func = torch.nn.NLLLoss(ignore_index=self.target_pad_value, reduce=False)
+                # TODO: Loss should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
+                loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
                 # TODO: Transpose actions and transpose back.. must be easier
                 actions = actions.transpose(0,1)
                 for action_iter in range(len(actions)):
@@ -224,7 +225,10 @@ class SupervisedTrainer(object):
             # for _ in range((epoch - 1) * steps_per_epoch, step):
             #     next(batch_generator)
 
+            # TODO: Model is set to train mode here (once, before training), and set to eval mode
+            # in evaluator.evaluate(). Won't this cause problems (if we would add layers like batchnorm)?
             model.train(True)
+            teacher_model.train(True)
             for batch in batch_generator:
                 step += 1
                 step_elapsed += 1

@@ -33,6 +33,7 @@ SAVE_EVERY=9999999999999999
 PRINT_EVERY=99999999999999
 ATTENTION='post-rnn'
 ATTTENTION_METHOD='hard'
+GAMMA=0.1
 
 echo "Start training"
 python train_model.py \
@@ -56,4 +57,5 @@ python train_model.py \
     --save_every $SAVE_EVERY \
     --print_every $PRINT_EVERY \
     --attention $ATTENTION \
-    --attention_method $ATTTENTION_METHOD
+    --attention_method $ATTTENTION_METHOD \
+    --gamma $GAMMA

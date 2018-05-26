@@ -99,6 +99,7 @@ class Evaluator(object):
         # after this method.
         previous_train_mode = model.training
         model.eval()
+        teacher_model.eval()
 
         losses = self.losses
         for loss in losses:
