@@ -191,51 +191,55 @@ class Understander(nn.Module):
 
 
 class UnderstanderEncoder(nn.Module):
-
-    """
-    Summary
-
-    Attributes:
-        embedding_dim (TYPE): Description
-        encoder (TYPE): Description
-        hidden_dim (TYPE): Description
-        input_embedding (TYPE): Description
-        input_vocab_size (TYPE): Description
-    """
-
     def __init__(self, input_vocab_size, embedding_dim, hidden_dim):
         """
-        Summary
-
         Args:
-            input_vocab_size (TYPE): Description
-            embedding_dim (TYPE): Description
-            hidden_dim (TYPE): Description
+            input_vocab_size (int): Total size of the input vocabulary
+            embedding_dim (int): Number of units to use for the input symbol embeddings
+            hidden_dim (int): Size of the RNN cells
+
         """
         super(UnderstanderEncoder, self).__init__()
 
         self.input_vocab_size = input_vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
+        self.n_layers = 1
+
+        # We will learn the initial hidden state
+        h_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
+        c_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
+
+        self.h_0 = nn.Parameter(h_0, requires_grad=True)
+        self.c_0 = nn.Parameter(c_0, requires_grad=True)
 
         self.input_embedding = nn.Embedding(input_vocab_size, embedding_dim)
-        self.encoder = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        self.encoder = nn.LSTM(
+            input_size=embedding_dim,
+            hidden_size=hidden_dim,
+            num_layers=self.n_layers,
+            batch_first=True)
+
 
     def forward(self, input_variable):
         """
-        Summary
+        Forward propagation
 
         Args:
-            input_variable (TYPE): Description
+            input_variable (torch.tensor): [batch_size x max_input_length] tensor containing indices of the input sequence
 
         Returns:
-            TYPE: Description
+            torch.tensor: The outputs of all encoder states
+            torch.tensor: The hidden state of the last encoder state
         """
         input_embedding = self.input_embedding(input_variable)
 
-        # TODO: Maybe we should learn hidden0? In any case, I don't think we need this method.
-        # Pytorch initialized hidden0 to zero by default. However, is it reset after very batch?
-        out, hidden = self.encoder(input_embedding)
+        # Expand learned initial states to the batch size
+        batch_size = input_embedding.size(0)
+        h_0_batch = self.h_0.expand(self.n_layers, batch_size, self.hidden_dim)
+        c_0_batch = self.c_0.expand(self.n_layers, batch_size, self.hidden_dim)
+
+        out, hidden = self.encoder(input_embedding, (h_0_batch, c_0_batch))
 
         return out, hidden
 
@@ -243,107 +247,118 @@ class UnderstanderEncoder(nn.Module):
 class UnderstanderDecoder(nn.Module):
 
     """
-    Summary
-
-    Attributes:
-        activation (TYPE): Description
-        combine_enc_seq_layer (TYPE): Description
-        decoder (TYPE): Description
-        hidden_dim (TYPE): Description
-        output_layer (TYPE): Description
+    Decoder of the understander model. It will forward a concatenation of each combination of
+    decoder state and encoder state through a MLP with 1 hidden layer to produce a score.
+    We take the soft-max of this to calculate the probabilities. All encoder states that are associated
+    with <pad> inputs are not taken into account for calculations.
     """
 
     def __init__(self, hidden_dim):
-        """
-        Summary
-
+        """      
         Args:
-            hidden_dim (TYPE): Description
+            hidden_dim (int): Size of the RNN cells
         """
         super(UnderstanderDecoder, self).__init__()
 
+        self.embedding_dim = 1
         self.hidden_dim = hidden_dim
+        self.n_layers = 1
 
-        # TODO: What should the input to the decoder be? Just the selected hidden state?
-        # Or maybe just no input?
+        # TODO: We don't have an embedding layer for now, as I'm not sure what the input to the
+        # decoder should be. Maybe the last output? Maybe the hidden state of the executor?
+        # For now I use a constant zero vector
         # self.input_embedding = nn.Embedding(1, embedding_dim)
+        self.embedding = torch.zeros(1, self.n_layers, self.embedding_dim, requires_grad=False, device=device)
+
         self.decoder = nn.LSTM(1, hidden_dim, batch_first=True)
 
-        self.combine_enc_seq_layer = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.activation = nn.ReLU()
-        self.output_layer = nn.Linear(hidden_dim, 1)
+        # Hidden layer of the MLP. Goes from 2xhidden_dim (enc_state+dec_state) to hidden dim
+        self.hidden_layer = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.hidden_activation = nn.ReLU()
 
-    # For evaluation we need to generate an attention vector for all 50 outputs while we have only 3 inputs,
-    # Thats why we use max_len. Should be fixed
+        # Final layer that produces the probabilities
+        self.output_layer = nn.Linear(hidden_dim, 1)
+        self.output_activation = nn.Softmax(dim=2)
+
     def forward(self, encoder_outputs, hidden, output_length, valid_action_mask):
         """
-        Summary
+        Forward propagation
 
         Args:
-            encoder_outputs (TYPE): Description
-            hidden (TYPE): Description
-            output_length (TYPE): Description
-            valid_action_mask (TYPE): Description
+            encoder_outputs (torch.tensor): [batch_size x enc_len x enc_hidden_dim] output of all encoder states
+            hidden (torch.tensor): ([batch_size x enc_hidden_dim] [batch_size x enc_hidden_dim]) h,c of last encoder state
+            output_length (int): Predefined decoder length
+            valid_action_mask (torch.tensor): ByteTensor with a 0 for each encoder state that is associated with <pad> input
 
         Returns:
-            TYPE: Description
-
-        Deleted Parameters:
-            state (TYPE): Description
+            torch.tensor: [batch_size x dec_len x enc_len] Probabilities of choosing each encoder state for each decoder state
         """
+
         action_scores_list = []
         batch_size = encoder_outputs.size(0)
+
+        # First decoder state should have as prev_hidden th hidden state of the encoder
+        decoder_hidden = hidden
 
         # TODO: We use rolled out version. If we actually won't use any (informative) input to the decoder
         # we should roll it to save computation time and have cleaner code.
         for decoder_step in range(output_length):
-            # TODO: What should the input to the decoder be?
-            embedding = torch.zeros(batch_size, 1, 1, requires_grad=False, device=device)
+            # Expand the embedding to the batch
+            embedding = self.embedding.expand(batch_size, self.n_layers, self.embedding_dim)
 
-            out, hidden = self.decoder(embedding, hidden)
+            # Forward propagate the decoder
+            _, decoder_hidden = self.decoder(embedding, decoder_hidden)
 
-            # I copied the attention mechanism from Machine's MLP attention method
+            # We use the same MLP method as in attention.py
             encoder_states = encoder_outputs
-            h, c = hidden
-            h = h.transpose(0, 1)
+            h, c = decoder_hidden # Unpack LSTM state
+            h = h.transpose(0, 1) # make it batch-first
             decoder_states = h
+
             # apply mlp to all encoder states for current decoder
             # decoder_states --> (batch, dec_seqlen, hl_size)
             # encoder_states --> (batch, enc_seqlen, hl_size)
             batch_size, enc_seqlen, hl_size = encoder_states.size()
-            _, dec_seqlen, _ = decoder_states.size()
+            _,          dec_seqlen, _       = decoder_states.size()
+
+            # For the encoder states we add extra dimension with dec_seqlen
             # (batch, enc_seqlen, hl_size) -> (batch, dec_seqlen, enc_seqlen, hl_size)
             encoder_states_exp = encoder_states.unsqueeze(1)
-            encoder_states_exp = encoder_states_exp.expand(
-                batch_size, dec_seqlen, enc_seqlen, hl_size)
+            encoder_states_exp = encoder_states_exp.expand(batch_size, dec_seqlen, enc_seqlen, hl_size)
+            
+            # For the decoder states we add extra dimension with enc_seqlen
             # (batch, dec_seqlen, hl_size) -> (batch, dec_seqlen, enc_seqlen, hl_size)
             decoder_states_exp = decoder_states.unsqueeze(2)
-            decoder_states_exp = decoder_states_exp.expand(
-                batch_size, dec_seqlen, enc_seqlen, hl_size)
+            decoder_states_exp = decoder_states_exp.expand(batch_size, dec_seqlen, enc_seqlen, hl_size)
+            
             # reshape encoder and decoder states to allow batchwise computation. We will have
-            # batch_size x enc_seqlen x dec_seqlen batches. So we apply the Linear
+            # in total batch_size x enc_seqlen x dec_seqlen batches. So we apply the Linear
             # layer for each of them
             decoder_states_tr = decoder_states_exp.contiguous().view(-1, hl_size)
             encoder_states_tr = encoder_states_exp.contiguous().view(-1, hl_size)
+            
+            # tensor with two dimensions. The first dimension is the number of batchs which is:
+            # batch_size x enc_seqlen x dec_seqlen
+            # the second dimension is enc_hidden_dim + dec_hidden_dim
             mlp_input = torch.cat((encoder_states_tr, decoder_states_tr), dim=1)
-            # apply mlp and reshape to get in correct form
-            mlp_output = self.combine_enc_seq_layer(mlp_input)
-            mlp_output = self.activation(mlp_output)
-            out = self.output_layer(mlp_output)
-            action_scores = out.view(batch_size, dec_seqlen, enc_seqlen)
+            
+            # apply mlp and reshape to get back in correct shape
+            mlp_hidden = self.hidden_layer(mlp_input)
+            mlp_hidden = self.hidden_activation(mlp_hidden)
+            
+            mlp_out = self.output_layer(mlp_hidden)
+            mlp_out = mlp_out.view(batch_size, dec_seqlen, enc_seqlen)
 
-            action_scores_list.append(action_scores)
+            action_scores_list.append(mlp_out)
 
         # Combine the action scores for each decoder step into 1 variable
         action_scores = torch.cat(action_scores_list, dim=1)
 
+        # Fill all invalid <pad> encoder states with 0 probability (-inf pre-softmax score)
         invalid_action_mask = valid_action_mask.ne(1).unsqueeze(1).expand(-1, output_length, -1)
-
         action_scores.masked_fill_(invalid_action_mask, -float('inf'))
 
         # For each decoder step, take the softmax over all actions to get probs
-        # TODO: Does it make sense to use log_softmax such that we don't have to call categorical.log_prob()?
-        # Would we then have to initialize Categorical with logits instead of probs?
-        action_probs = F.softmax(action_scores, dim=2)
+        action_probs = self.output_activation(action_scores)
 
         return action_probs
