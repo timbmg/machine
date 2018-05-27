@@ -61,22 +61,18 @@ class Understander(nn.Module):
 
         return action_probs
 
-    def select_actions(self, state, input_lengths, max_decoding_length, epsilon):
+    def get_valid_action_mask(self, state, input_lengths):
         """
-        Perform forward pass and stochastically select actions using epsilon-greedy RL
-
+        Get a bytetensor that indicates which encoder states are valid to attend to.
+        All <pad> steps are invalid
+        
         Args:
-            state (torch.tensor): [batch_size x max_input_length] tensor containing indices of the input sequence
-            input_lengths (list): List containing the input length for each element in the batch
-            max_decoding_length (int): Maximum length till which the decoder should run
-            epsilon (float): epsilon for epsilon-greedy RL. Set to 1 in inference mode
-
+            state (torch.tensor): [batch_size x max_input_length] input variable
+            input_lengths (torch.tensor): [batch_size] tensor containing the input length of each sequence in the batch
+        
         Returns:
-            list(torch.tensor): List of length max_output_length containing the selected actions
+            torch.tensor: [batch_size x max_input_length] ByteTensor with a 0 for all <pad> elements
         """
-        if self._rewards:
-            raise Exception("Did you forget to finish the episode?")
-
         batch_size = state.size(0)
 
         # First, we establish which encoder states are valid to attend to. For
@@ -95,6 +91,27 @@ class Understander(nn.Module):
         # actions and 0 for all invalid actions
         valid_action_mask = encoding_steps_indices < input_lengths_expanded
 
+        return valid_action_mask
+
+    def select_actions(self, state, input_lengths, max_decoding_length, epsilon):
+        """
+        Perform forward pass and stochastically select actions using epsilon-greedy RL
+
+        Args:
+            state (torch.tensor): [batch_size x max_input_length] tensor containing indices of the input sequence
+            input_lengths (list): List containing the input length for each element in the batch
+            max_decoding_length (int): Maximum length till which the decoder should run
+            epsilon (float): epsilon for epsilon-greedy RL. Set to 1 in inference mode
+
+        Returns:
+            list(torch.tensor): List of length max_output_length containing the selected actions
+        """
+        if self._rewards:
+            raise Exception("Did you forget to finish the episode?")
+
+        # First, we establish which encoder states are valid to attend to.
+        valid_action_mask = self.get_valid_action_mask(state, input_lengths)
+        
         # We perform a forward pass to get the probability of attending to each
         # encoder for each decoder
         probabilities = self.forward(state, valid_action_mask, max_decoding_length)

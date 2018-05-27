@@ -67,6 +67,7 @@ parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device 
 parser.add_argument('--pre_train', help='Data for pre-training the executor')
 parser.add_argument('--gamma', type=float, default=0.99, help='Gamma to use for discounted future rewards')
 parser.add_argument('--epsilon', type=float, default=1, help='Epsilon to use for epsilon-greedy during RL training.')
+parser.add_argument('--understander_train_method', type=str, choices=['rl', 'supervised'], help='Whether to use reinforcement or supervised learning for the understander')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -249,14 +250,16 @@ metrics = [WordAccuracy(ignore_index=pad), SequenceAccuracy(ignore_index=pad), F
 checkpoint_path = os.path.join(opt.output_dir, opt.load_checkpoint) if opt.resume else None
 
 # create trainer
-t = SupervisedTrainer(loss=losses, metrics=metrics, 
+t = SupervisedTrainer(loss=losses,
+                      metrics=metrics, 
                       loss_weights=loss_weights,
                       batch_size=opt.batch_size,
                       eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every,
                       expt_dir=opt.output_dir,
-                      epsilon=opt.epsilon)
+                      epsilon=opt.epsilon,
+                      understander_train_method=opt.understander_train_method)
 
 seq2seq, logs = t.train(model=seq2seq,
                   understander_model=understander_model,

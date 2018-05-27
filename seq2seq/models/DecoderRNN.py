@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .attention import Attention, HardGuidance
+from .attention import Attention, HardGuidance, ProvidedAttentionVectors
 from .baseRNN import BaseRNN
 
 if torch.cuda.is_available():
@@ -156,8 +156,17 @@ class DecoderRNN(BaseRNN):
         return predicted_softmax, hidden, attn
 
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
-                    function=F.log_softmax, teacher_forcing_ratio=0, provided_attention=None):
-        
+                    function=F.log_softmax, teacher_forcing_ratio=0, provided_attention=None, provided_attention_vectors=None):
+        # If the understander is trained using supervised learning, we need a different attention method. One that accepts full attention
+        # vectors instead of single indices. As soon as we see that the understander has provided these full vectors, we change the attention method
+        # Must be solved more nicely in the future.
+        if provided_attention_vectors is not None: 
+            self.attention = Attention(self.hidden_size, 'provided_attention_vectors')
+        # When storing a checkpoint, and after training, we will use the evaluator again with normal attention indices,
+        # so we must change back the attention method
+        if provided_attention is not None:
+            self.attention = Attention(self.hidden_size, 'hard')
+
         ret_dict = dict()
         if self.use_attention:
             ret_dict[DecoderRNN.KEY_ATTN_SCORE] = list()
@@ -191,6 +200,8 @@ class DecoderRNN(BaseRNN):
         attention_method_kwargs = {}
         if self.attention and isinstance(self.attention.method, HardGuidance):
             attention_method_kwargs['provided_attention'] = provided_attention
+        if self.attention and isinstance(self.attention.method, ProvidedAttentionVectors):
+            attention_method_kwargs['provided_attention_vectors'] = provided_attention_vectors
 
         # When we use pre-rnn attention we must unroll the decoder. We need to calculate the attention based on
         # the previous hidden state, before we can calculate the next hidden state.
@@ -213,7 +224,7 @@ class DecoderRNN(BaseRNN):
                     decoder_input = symbols
 
                 # Perform one forward step
-                if self.attention and isinstance(self.attention.method, HardGuidance):
+                if self.attention and (isinstance(self.attention.method, HardGuidance) or isinstance(self.attention.method, ProvidedAttentionVectors)):
                     attention_method_kwargs['step'] = di
                 decoder_output, decoder_hidden, step_attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
                                                                          function=function, **attention_method_kwargs)
@@ -228,7 +239,7 @@ class DecoderRNN(BaseRNN):
             decoder_input = inputs[:, :-1]
 
             # Forward step without unrolling
-            if self.attention and isinstance(self.attention.method, HardGuidance):
+            if self.attention and (isinstance(self.attention.method, HardGuidance) or isinstance(self.attention.method, ProvidedAttentionVectors)):
                 attention_method_kwargs['step'] = -1
             decoder_output, decoder_hidden, attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, **attention_method_kwargs)
 

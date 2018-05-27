@@ -64,7 +64,7 @@ class Attention(nn.Module):
         mask = encoder_states.eq(0.)[:, :, :1].transpose(1, 2)
 
         # Compute attention vals
-        attn = self.method(decoder_states, encoder_states, **attention_method_kwargs)
+        attn = self.method(decoder_states, encoder_states, **attention_method_kwargs).clone()
 
         if self.mask is not None:
             attn.masked_fill_(self.mask, -float('inf'))
@@ -91,6 +91,8 @@ class Attention(nn.Module):
             method = Dot()
         elif method == 'hard':
             method = HardGuidance()
+        elif method == 'provided_attention_vectors':
+            method = ProvidedAttentionVectors()
         else:
             raise ValueError("Unknown attention method")
 
@@ -233,3 +235,28 @@ class HardGuidance(nn.Module):
         attention_scores = attention_scores
 
         return attention_scores
+
+class ProvidedAttentionVectors(nn.Module):
+    """
+    Attention method / attentive guidance method for data sets that are annotated with attentive guidance.
+    """
+
+    def forward(self, decoder_states, encoder_states, step, provided_attention_vectors):
+        """
+        Forward method that receives provided attentive guidance indices and returns proper
+        attention scores vectors.
+
+        Args:
+            decoder_states (torch.FloatTensor): Hidden layer of all decoder states (batch, dec_seqlen, hl_size)
+            encoder_states (torch.FloatTensor): Output layer of all encoder states (batch, dec_seqlen, hl_size)
+            step (int): The current decoder step for unrolled RNN. Set to -1 for rolled RNN
+            provided_attention (torch.LongTensor): Variable containing the provided attentive guidance indices (batch, max_provided_attention_length)
+
+        Returns:
+            torch.tensor: Attention score vectors (batch, dec_seqlen, hl_size)
+        """
+
+        if step != -1:
+            return provided_attention_vectors[:, step, :].unsqueeze(1)
+        else:
+            return provided_attention_vectors

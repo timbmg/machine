@@ -34,7 +34,7 @@ class SupervisedTrainer(object):
         checkpoint_every (int, optional): number of epochs to checkpoint after, (default: 100)
         print_every (int, optional): number of iterations to print after, (default: 100)
     """
-    def __init__(self, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64, eval_batch_size=128,
+    def __init__(self, understander_train_method, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64, eval_batch_size=128,
                  random_seed=None,
                  checkpoint_every=100, print_every=100, epsilon=1):
         self._trainer = "Simple Trainer"
@@ -63,34 +63,51 @@ class SupervisedTrainer(object):
 
         self.pre_train=True
         self.epsilon = epsilon
+        self.understander_train_method = understander_train_method
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, understander_model, teacher_forcing_ratio):
         loss = self.loss
-        
+
         # First we perform the forward pass for the understander (if we are not in pre-training)
 
         if not self.pre_train:
-            mode = 'train'
+            # If we are in training mode (of the understander) we should not use the provided attention
+            # indices, but generate them ourselves.
+            del target_variable['attention_target']
 
             # We should provide an attention target / action for each decoder output. The target
             # however also includes the SOS. Hence the -1
             max_len = target_variable['decoder_output'].size(1) - 1
 
-            # Make understander select actions
-            actions = understander_model.select_actions(
-                state=input_variable,
-                input_lengths=input_lengths,
-                max_decoding_length=max_len,
-                epsilon=self.epsilon)
+            if self.understander_train_method == 'rl':
+                # Make understander select actions
+                actions = understander_model.select_actions(
+                    state=input_variable,
+                    input_lengths=input_lengths,
+                    max_decoding_length=max_len,
+                    epsilon=self.epsilon)
 
-            # Prepend -1 to the actions for the SOS step
-            batch_size = actions.size(0)
-            actions = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
+                # Prepend -1 to the actions for the SOS step
+                batch_size = actions.size(0)
+                actions = torch.cat([torch.full([batch_size, 1], -1, dtype=torch.long, device=device), actions], dim=1)
+                
+                # In pre-training mode, the attention targets are provided (by the data set)
+                # However in training mode, we overwrite this with the actions of the understander
+                target_variable['attention_target'] = actions
+
+            elif self.understander_train_method == 'supervised':
+                # Get the encoder states that are valid to attend to
+                valid_action_mask = understander_model.get_valid_action_mask(
+                    state=input_variable,
+                    input_lengths=input_lengths)
+                # Fo forward pass of the understander to get all probabilities
+                action_probabilities = understander_model(
+                    state=input_variable,
+                    valid_action_mask=valid_action_mask,
+                    max_decoding_length=max_len)
+                # Add the probabilities to target_variable so that they can be used in the decoder (attention)
+                target_variable['provided_attention_vectors'] = action_probabilities
             
-            # In pre-training mode, the attention targets are provided (by the data set)
-            # However in training mode, we overwrite this with the actions of the understander
-            target_variable['attention_target'] = actions
-        
         # Now we perform forward propagation of the model / executor. Attention (targets) are provided
         # by the data or by the understander, depending on the train mode.
         decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
@@ -102,42 +119,51 @@ class SupervisedTrainer(object):
         # In the case of pre-training, we only back-propagate through the executor.
         # In training mode, only the understander (with RL)
         if self.pre_train:
-            for i, loss in enumerate(losses, 0):
+            model.zero_grad()
+            for i, loss in enumerate(losses):
                 loss.scale_loss(self.loss_weights[i])
                 loss.backward(retain_graph=True)
             self.optimizer.step()
-            model.zero_grad()
 
             understander_model.finish_episode()
 
         else:
-            # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
-            # Actually, I think we should use word accuracy for the reward function of the understander.
-            # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
-            loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
+            understander_model.zero_grad()
 
-            rewards = []
-            for action_iter in range(len(decoder_outputs)):
-                prediction = decoder_outputs[action_iter]
-                # +1 because target_variable includes SOS which the prediction of course doesn't
-                ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                
-                # Since loss is usually in range [0-3], where a loss of 0 should give the highest reward to the undestander,
-                # we use as reward function: (1/3) * (3-loss).
-                # This is because RL seems to be very unstable when we allow negative rewards. We even clip the rewards
-                # to [0,1] to make sure this doesn't happen
-                import numpy
-                step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
-                rewards.append(step_reward)
+            if self.understander_train_method == 'rl':
+                # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
+                # Actually, I think we should use word accuracy for the reward function of the understander.
+                # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
+                loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
 
-            understander_model.set_rewards(rewards)
+                rewards = []
+                for action_iter in range(len(decoder_outputs)):
+                    prediction = decoder_outputs[action_iter]
+                    # +1 because target_variable includes SOS which the prediction of course doesn't
+                    ground_truth = target_variable['decoder_output'][:,action_iter+1]
+                    
+                    # Since loss is usually in range [0-3], where a loss of 0 should give the highest reward to the undestander,
+                    # we use as reward function: (1/3) * (3-loss).
+                    # This is because RL seems to be very unstable when we allow negative rewards. We even clip the rewards
+                    # to [0,1] to make sure this doesn't happen
+                    import numpy
+                    step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
+                    rewards.append(step_reward)
 
-            # Calculate discounted rewards and policy loss
-            policy_loss = understander_model.finish_episode()
+                understander_model.set_rewards(rewards)
+
+                # Calculate discounted rewards and policy loss
+                policy_loss = understander_model.finish_episode()
+                policy_loss.backward()
+
+            elif self.understander_train_method == 'supervised':
+                for i, loss in enumerate(losses):
+                    loss.scale_loss(self.loss_weights[i])
+                    loss.backward(retain_graph=True)
+
+                understander_model.finish_episode()
 
             # Update understander
-            understander_model.zero_grad()
-            policy_loss.backward()
             self.understander_optimizer.step()
 
         return losses
@@ -211,8 +237,6 @@ class SupervisedTrainer(object):
             # for _ in range((epoch - 1) * steps_per_epoch, step):
             #     next(batch_generator)
 
-            # TODO: Model is set to train mode here (once, before training), and set to eval mode
-            # in evaluator.evaluate(). Won't this cause problems (if we would add layers like batchnorm)?
             model.train(True)
             understander_model.train(True)
             for batch in batch_generator:
