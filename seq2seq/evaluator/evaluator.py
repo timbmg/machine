@@ -97,7 +97,8 @@ class Evaluator(object):
         """
         # If the model was in train mode before this method was called, we make sure it still is
         # after this method.
-        previous_train_mode = model.training
+        previous_model_mode        = model.training
+        previous_understander_mode = understander_model.training
         model.eval()
         understander_model.eval()
 
@@ -148,6 +149,7 @@ class Evaluator(object):
                 # Compute loss(es) over one batch
                 losses = self.update_loss(losses, decoder_outputs, decoder_hidden, other, target_variable)
 
-        model.train(previous_train_mode)
+        model.train(previous_model_mode)
+        understander_model.train(previous_understander_mode)
 
         return losses, metrics
