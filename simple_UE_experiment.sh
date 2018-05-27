@@ -16,31 +16,31 @@ TEST_PATH4="${DATASETS_PATH}/longer_compositions_incremental.tsv"
 TEST_PATH5="${DATASETS_PATH}/longer_compositions_new.tsv"
 OUTPUT_DIR=example
 
-EPOCHS=3
+EPOCHS=100
 MAX_LEN=50
 RNN_CELL='lstm'
-EMBEDDING_SIZE=300
-HIDDEN_SIZE=300
+EMBEDDING_SIZE=32
+HIDDEN_SIZE=256
 N_LAYERS=1
 DROPOUT_P_ENCODER=0
 DROPOUT_P_DECODER=0
-TEACHER_FORCING_RATIO=0
-BATCH_SIZE=32
+TEACHER_FORCING_RATIO=0.5
+BATCH_SIZE=5
 EVAL_BATCH_SIZE=1024
 OPTIM='adam'
 LR=0.001
 SAVE_EVERY=9999999999999999
 PRINT_EVERY=99999999999999
-ATTENTION='post-rnn'
+ATTENTION='pre-rnn'
 ATTTENTION_METHOD='hard'
 GAMMA=0.1
-EPSILON=0.95
+EPSILON=0.99
 
 echo "Start training"
 python train_model.py \
     --train $TRAIN \
     --pre_train $TRAIN \
-    --dev $DEV \
+    --dev $TRAIN \
     --output_dir $OUTPUT_DIR \
     --epochs $EPOCHS \
     --max_len $MAX_LEN \
