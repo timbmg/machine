@@ -61,10 +61,15 @@ class SupervisedTrainer(object):
 
         self.logger = logging.getLogger(__name__)
 
-        self.pre_train=True
         self.epsilon = epsilon
         self.understander_train_method = understander_train_method
         self.train_regime = train_regime
+
+        # Start either in 'pre-train' or 'train' mode
+        if self.train_regime == 'two-stage':
+            self.pre_train = True
+        else:
+            self.pre_train = False
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, understander_model, teacher_forcing_ratio):
         loss = self.loss
