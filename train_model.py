@@ -34,7 +34,7 @@ parser.add_argument('--output_dir', default='../models', help='Path to model dir
 parser.add_argument('--epochs', type=int, help='Number of epochs', default=6)
 parser.add_argument('--optim', type=str, help='Choose optimizer', choices=['adam', 'adadelta', 'adagrad', 'adamax', 'rmsprop', 'sgd'])
 parser.add_argument('--max_len', type=int, help='Maximum sequence length', default=50)
-parser.add_argument('--rnn_cell', help="Chose type of rnn cell", default='lstm')
+parser.add_argument('--rnn_cell', type=str, help="Chose type of rnn cell", choices=['lstm', 'gru'], default='lstm')
 parser.add_argument('--bidirectional', action='store_true', help="Flag for bidirectional encoder")
 parser.add_argument('--embedding_size', type=int, help='Embedding size', default=128)
 parser.add_argument('--hidden_size', type=int, help='Hidden layer size', default=128)
@@ -221,6 +221,7 @@ output_vocabulary = output_vocab.itos
 ##### PREPARE Understander MODEL #####
 #################################
 understander_model = Understander(
+    rnn_cell=opt.rnn_cell,
     input_vocab_size=len(src.vocab),
     embedding_dim=opt.embedding_size,
     hidden_dim=hidden_size,

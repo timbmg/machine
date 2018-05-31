@@ -20,7 +20,7 @@ class Understander(nn.Module):
     Finally, call `finish_episod()` to calculate the discounted rewards and policy loss.
     """
 
-    def __init__(self, input_vocab_size, embedding_dim, hidden_dim, gamma):
+    def __init__(self, rnn_cell, input_vocab_size, embedding_dim, hidden_dim, gamma):
         """
         Args:
             input_vocab_size (int): Total size of the input vocabulary
@@ -30,12 +30,16 @@ class Understander(nn.Module):
         """
         super(Understander, self).__init__()
 
+        rnn_cell = rnn_cell.lower()
+
         self.encoder = UnderstanderEncoder(
+            rnn_cell=rnn_cell,
             input_vocab_size=input_vocab_size,
             embedding_dim=embedding_dim,
             hidden_dim=hidden_dim)
 
         self.decoder = UnderstanderDecoder(
+            rnn_cell=rnn_cell,
             hidden_dim=hidden_dim)
 
         self.gamma = gamma
@@ -208,7 +212,7 @@ class Understander(nn.Module):
 
 
 class UnderstanderEncoder(nn.Module):
-    def __init__(self, input_vocab_size, embedding_dim, hidden_dim):
+    def __init__(self, rnn_cell, input_vocab_size, embedding_dim, hidden_dim):
         """
         Args:
             input_vocab_size (int): Total size of the input vocabulary
@@ -218,20 +222,32 @@ class UnderstanderEncoder(nn.Module):
         """
         super(UnderstanderEncoder, self).__init__()
 
+        self.rnn_cell = rnn_cell
         self.input_vocab_size = input_vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.n_layers = 1
 
-        # We will learn the initial hidden state
-        h_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
-        c_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
-
-        self.h_0 = nn.Parameter(h_0, requires_grad=True)
-        self.c_0 = nn.Parameter(c_0, requires_grad=True)
-
         self.input_embedding = nn.Embedding(input_vocab_size, embedding_dim)
-        self.encoder = nn.LSTM(
+
+        # We will learn the initial hidden state
+        if self.rnn_cell == 'lstm':
+            h_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
+            c_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
+
+            self.h_0 = nn.Parameter(h_0, requires_grad=True)
+            self.c_0 = nn.Parameter(c_0, requires_grad=True)
+
+            rnn_cell = nn.LSTM
+
+        elif self.rnn_cell == 'gru':
+            h_0 = torch.zeros(self.n_layers, 1, self.hidden_dim, device=device)
+
+            self.h_0 = nn.Parameter(h_0, requires_grad=True)
+
+            rnn_cell = nn.GRU
+
+        self.encoder = rnn_cell(
             input_size=embedding_dim,
             hidden_size=hidden_dim,
             num_layers=self.n_layers,
@@ -253,10 +269,16 @@ class UnderstanderEncoder(nn.Module):
 
         # Expand learned initial states to the batch size
         batch_size = input_embedding.size(0)
-        h_0_batch = self.h_0.expand(self.n_layers, batch_size, self.hidden_dim)
-        c_0_batch = self.c_0.expand(self.n_layers, batch_size, self.hidden_dim)
+        if self.rnn_cell == 'lstm':
+            h_0_batch = self.h_0.expand(self.n_layers, batch_size, self.hidden_dim)
+            c_0_batch = self.c_0.expand(self.n_layers, batch_size, self.hidden_dim)
+            hidden0 = (h_0_batch, c_0_batch)
 
-        out, hidden = self.encoder(input_embedding, (h_0_batch, c_0_batch))
+        elif self.rnn_cell == 'gru':
+            h_0_batch = self.h_0.expand(self.n_layers, batch_size, self.hidden_dim)
+            hidden0 = h_0_batch
+
+        out, hidden = self.encoder(input_embedding, hidden0)
 
         return out, hidden
 
@@ -270,7 +292,7 @@ class UnderstanderDecoder(nn.Module):
     with <pad> inputs are not taken into account for calculations.
     """
 
-    def __init__(self, hidden_dim):
+    def __init__(self, rnn_cell, hidden_dim):
         """      
         Args:
             hidden_dim (int): Size of the RNN cells
@@ -287,7 +309,13 @@ class UnderstanderDecoder(nn.Module):
         # self.input_embedding = nn.Embedding(1, embedding_dim)
         self.embedding = torch.zeros(1, self.n_layers, self.embedding_dim, requires_grad=False, device=device)
 
-        self.decoder = nn.LSTM(1, hidden_dim, batch_first=True)
+        self.rnn_cell = rnn_cell
+        if self.rnn_cell == 'lstm':
+            rnn_cell = nn.LSTM
+        elif self.rnn_cell == 'gru':
+            rnn_cell = nn.GRU
+
+        self.decoder = rnn_cell(1, hidden_dim, batch_first=True)
 
         # Hidden layer of the MLP. Goes from 2xhidden_dim (enc_state+dec_state) to hidden dim
         self.hidden_layer = nn.Linear(hidden_dim * 2, hidden_dim)
@@ -328,7 +356,10 @@ class UnderstanderDecoder(nn.Module):
 
             # We use the same MLP method as in attention.py
             encoder_states = encoder_outputs
-            h, c = decoder_hidden # Unpack LSTM state
+            if self.rnn_cell == 'lstm':
+                h, c = decoder_hidden # Unpack LSTM state
+            elif self.rnn_cell == 'gru':
+                h = decoder_hidden
             h = h.transpose(0, 1) # make it batch-first
             decoder_states = h
 
