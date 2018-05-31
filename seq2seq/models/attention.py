@@ -1,6 +1,10 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from ..util.gumbel import gumbel_softmax
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,10 +44,23 @@ class Attention(nn.Module):
 
     """
 
-    def __init__(self, dim, method):
+    def __init__(self, dim, method, sample_train, sample_infer, initial_temperature, learn_temperature):
         super(Attention, self).__init__()
         self.mask = None
         self.method = self.get_method(method, dim)
+        self.sample_train = sample_train
+        self.sample_infer = sample_infer
+
+        # Currently the temperature is a single parameter.
+        # In the future we could make it a function of, for example, the same input that the attention
+        # method uses. (concatenation of decoder and encoder states)
+        if learn_temperature:
+            # We use exp to make sure the temperature is always positive. 
+            # To be sure that the initial temperature is actually as specified, we first take the log.
+            initial_temperature = torch.log(torch.tensor(initial_temperature))
+            self.temperature = nn.Parameter(initial_temperature)
+        else:
+            self.temperature = torch.tensor(initial_temperature)
 
     def set_mask(self, mask):
         """
@@ -72,7 +89,30 @@ class Attention(nn.Module):
         # apply local mask
         attn.masked_fill_(mask, -float('inf'))
 
-        attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
+        # We are in training mode
+        if self.training:
+            if self.sample_train == 'full':
+                attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
+
+            elif self.sample_train == 'gumbel':
+                attn = F.log_softmax(attn.view(-1, input_size), dim=1)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=temperature, eps=1e-20)
+                attn = attn_hard.view(batch_size, -1, input_size)
+
+        # Inference mode
+        else:
+            if self.sample_train == 'full':
+                attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
+
+            elif self.sample_train == 'gumbel':
+                attn = F.log_softmax(attn.view(-1, input_size), dim=1)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=temperature, eps=1e-20)
+                attn = attn_hard.view(batch_size, -1, input_size)
+
+            elif self.sample_train == 'argmax':
+                argmax = attn.argmax(dim=2, keepdim=True)
+                attn = torch.zeros_like(attn)
+                attn.scatter_(dim=2, index=argmax, value=1)
 
         # (batch, out_len, in_len) * (batch, in_len, dim) -> (batch, out_len, dim)
         context = torch.bmm(attn, encoder_states)

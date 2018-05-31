@@ -68,6 +68,10 @@ parser.add_argument('--pre_train', help='Data for pre-training the executor')
 parser.add_argument('--gamma', type=float, default=0.99, help='Gamma to use for discounted future rewards')
 parser.add_argument('--epsilon', type=float, default=1, help='Epsilon to use for epsilon-greedy during RL training.')
 parser.add_argument('--understander_train_method', type=str, choices=['rl', 'supervised'], help='Whether to use reinforcement or supervised learning for the understander')
+parser.add_argument('--sample_train', type=str, choices=['full', 'gumbel'], help='When training UE in a supervised setting, we can use the full attention vector or sample using gumbel at training time')
+parser.add_argument('--sample_infer', type=str, choices=['full', 'gumbel', 'argmax'], help='When training UE in a supervised setting, we can use the full attention vector, sample using gumbel, or use argmax at inference time')
+parser.add_argument('--initial_temperature', type=float, default=1, help='(Initial) temperature to use for gumbel-softmax')
+parser.add_argument('--learn_temperature', action='store_true', help='Whether the temperature should be a learnable parameter')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -193,7 +197,12 @@ else:
                          full_focus=opt.full_focus,
                          bidirectional=opt.bidirectional,
                          rnn_cell=opt.rnn_cell,
-                         eos_id=tgt.eos_id, sos_id=tgt.sos_id)
+                         eos_id=tgt.eos_id,
+                         sos_id=tgt.sos_id,
+                         sample_train=opt.sample_train,
+                         sample_infer=opt.sample_infer,
+                         initial_temperature=opt.initial_temperature,
+                         learn_temperature=opt.learn_temperature)
     seq2seq = Seq2seq(encoder, decoder)
     if torch.cuda.is_available():
         seq2seq.cuda()

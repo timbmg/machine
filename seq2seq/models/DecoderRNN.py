@@ -66,7 +66,7 @@ class DecoderRNN(BaseRNN):
     KEY_SEQUENCE = 'sequence'
 
     def __init__(self, vocab_size, max_len, hidden_size,
-            sos_id, eos_id,
+            sos_id, eos_id, sample_train, sample_infer, initial_temperature, learn_temperature,
             n_layers=1, rnn_cell='gru', bidirectional=False,
             input_dropout_p=0, dropout_p=0, use_attention=False, attention_method=None, full_focus=False):
         super(DecoderRNN, self).__init__(vocab_size, max_len, hidden_size,
@@ -98,7 +98,17 @@ class DecoderRNN(BaseRNN):
 
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
         if use_attention:
-            self.attention = Attention(self.hidden_size, self.attention_method)
+            self.sample_train = sample_train
+            self.sample_infer = sample_infer
+            self.initial_temperature = initial_temperature
+            self.learn_temperature = learn_temperature
+            self.attention = Attention(
+                dim=self.hidden_size,
+                method=self.attention_method,
+                sample_train=self.sample_train,
+                sample_infer=self.sample_infer,
+                initial_temperature=self.initial_temperature,
+                learn_temperature=self.learn_temperature)
         else:
             self.attention = None
 
@@ -161,11 +171,23 @@ class DecoderRNN(BaseRNN):
         # vectors instead of single indices. As soon as we see that the understander has provided these full vectors, we change the attention method
         # Must be solved more nicely in the future.
         if provided_attention_vectors is not None: 
-            self.attention = Attention(self.hidden_size, 'provided_attention_vectors')
+            self.attention = Attention(
+                dim=self.hidden_size,
+                method='provided_attention_vectors',
+                sample_train=self.sample_train,
+                sample_infer=self.sample_infer,
+                initial_temperature=self.initial_temperature,
+                learn_temperature=self.learn_temperature)
         # When storing a checkpoint, and after training, we will use the evaluator again with normal attention indices,
         # so we must change back the attention method
         if provided_attention is not None:
-            self.attention = Attention(self.hidden_size, 'hard')
+            self.attention = Attention(
+                dim=self.hidden_size,
+                method='hard',
+                sample_train=self.sample_train,
+                sample_infer=self.sample_infer,
+                initial_temperature=self.initial_temperature,
+                learn_temperature=self.learn_temperature)
 
         ret_dict = dict()
         if self.use_attention:

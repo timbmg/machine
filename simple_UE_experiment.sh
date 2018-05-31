@@ -37,7 +37,10 @@ EPOCHS=200 # first 50% of epochs, only the executor is trained with hard guidanc
 GAMMA=0.1 # Discount factor for rewards. Since we don't have sparse rewards, we can keep this low
 EPSILON=0.99 # Sample stochastically from policy 99% of times, sample unifomly 1%
 TRAIN_METHOD='supervised' # Train understander with either 'supervised' or 'rl'
-
+SAMPLE_TRAIN='full' # In supervised setting we can either use the 'full' attention vector, or sample using 'gumbel'
+SAMPLE_INFER='full' # In supervised setting we can either use the 'full' attention vector, sample using 'gumbel' or use 'argmax' ar inference
+INIT_TEMP=1 # (Initial) temperature for gumbel-softmax
+LEARN_TEMP='--learn_temperature' # Whether to learn the temperature as a parameter
 
 echo "Start training"
 python train_model.py \
@@ -63,6 +66,9 @@ python train_model.py \
     --attention $ATTENTION \
     --attention_method $ATTTENTION_METHOD \
     --gamma $GAMMA \
-    --ignore_output_eos \
     --epsilon $EPSILON \
-    --understander_train_metho $TRAIN_METHOD
+    --understander_train_metho $TRAIN_METHOD \
+    --sample_train $SAMPLE_TRAIN \
+    --sample_infer $SAMPLE_INFER \
+    --initial_temperature $INIT_TEMP \
+    "${LEARN_TEMP}"
