@@ -101,18 +101,20 @@ class Attention(nn.Module):
 
         # Inference mode
         else:
-            if self.sample_train == 'full':
+            if self.sample_infer == 'full':
                 attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
 
-            elif self.sample_train == 'gumbel':
+            elif self.sample_infer == 'gumbel':
                 attn = F.log_softmax(attn.view(-1, input_size), dim=1)
                 attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=self.temperature, eps=1e-20)
                 attn = attn_hard.view(batch_size, -1, input_size)
 
-            elif self.sample_train == 'argmax':
+            elif self.sample_infer == 'argmax':
                 argmax = attn.argmax(dim=2, keepdim=True)
                 attn = torch.zeros_like(attn)
                 attn.scatter_(dim=2, index=argmax, value=1)
+
+        print(attn[0])
 
         # (batch, out_len, in_len) * (batch, in_len, dim) -> (batch, out_len, dim)
         context = torch.bmm(attn, encoder_states)

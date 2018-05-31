@@ -42,7 +42,7 @@ SAMPLE_INFER='full' # In supervised setting we can either use the 'full' attenti
 INIT_TEMP=3.14 # (Initial) temperature for gumbel-softmax
 LEARN_TEMP='--learn_temperature' # Whether to learn the temperature as a parameter
 INIT_EXEC_DEC_WITH='new' # Initialize the executor's decoder with it's last encoder, or with a new learable vector
-TRAIN_REGIME='two-stage' # In 'two-stage' training we first train the executor with hard guidance for n/2 epochs and then the understander for n/2 epochs
+TRAIN_REGIME='simultaneous' # In 'two-stage' training we first train the executor with hard guidance for n/2 epochs and then the understander for n/2 epochs
                          # In 'simultaneous' training, we train both models together without any supervision on the attention.
 
 echo "Start training"
