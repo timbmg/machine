@@ -39,7 +39,7 @@ EPSILON=0.99 # Sample stochastically from policy 99% of times, sample unifomly 1
 TRAIN_METHOD='supervised' # Train understander with either 'supervised' or 'rl'
 SAMPLE_TRAIN='full' # In supervised setting we can either use the 'full' attention vector, or sample using 'gumbel'
 SAMPLE_INFER='full' # In supervised setting we can either use the 'full' attention vector, sample using 'gumbel' or use 'argmax' ar inference
-INIT_TEMP=1 # (Initial) temperature for gumbel-softmax
+INIT_TEMP=3.14 # (Initial) temperature for gumbel-softmax
 LEARN_TEMP='--learn_temperature' # Whether to learn the temperature as a parameter
 INIT_EXEC_DEC_WITH='new' # Initialize the executor's decoder with it's last encoder, or with a new learable vector
 

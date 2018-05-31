@@ -58,7 +58,7 @@ class Attention(nn.Module):
             # We use exp to make sure the temperature is always positive. 
             # To be sure that the initial temperature is actually as specified, we first take the log.
             initial_temperature = torch.log(torch.tensor(initial_temperature))
-            self.temperature = nn.Parameter(initial_temperature)
+            self.temperature = nn.Parameter(torch.exp(initial_temperature))
         else:
             self.temperature = torch.tensor(initial_temperature)
 
@@ -96,7 +96,7 @@ class Attention(nn.Module):
 
             elif self.sample_train == 'gumbel':
                 attn = F.log_softmax(attn.view(-1, input_size), dim=1)
-                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=temperature, eps=1e-20)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=self.temperature, eps=1e-20)
                 attn = attn_hard.view(batch_size, -1, input_size)
 
         # Inference mode
@@ -106,7 +106,7 @@ class Attention(nn.Module):
 
             elif self.sample_train == 'gumbel':
                 attn = F.log_softmax(attn.view(-1, input_size), dim=1)
-                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=temperature, eps=1e-20)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=self.temperature, eps=1e-20)
                 attn = attn_hard.view(batch_size, -1, input_size)
 
             elif self.sample_train == 'argmax':
