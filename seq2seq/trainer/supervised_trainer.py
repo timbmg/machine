@@ -34,7 +34,7 @@ class SupervisedTrainer(object):
         checkpoint_every (int, optional): number of epochs to checkpoint after, (default: 100)
         print_every (int, optional): number of iterations to print after, (default: 100)
     """
-    def __init__(self, understander_train_method, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64, eval_batch_size=128,
+    def __init__(self, understander_train_method, train_regime, expt_dir='experiment', loss=[NLLLoss()], loss_weights=None, metrics=[], batch_size=64, eval_batch_size=128,
                  random_seed=None,
                  checkpoint_every=100, print_every=100, epsilon=1):
         self._trainer = "Simple Trainer"
@@ -64,6 +64,7 @@ class SupervisedTrainer(object):
         self.pre_train=True
         self.epsilon = epsilon
         self.understander_train_method = understander_train_method
+        self.train_regime = train_regime
 
     def _train_batch(self, input_variable, input_lengths, target_variable, model, understander_model, teacher_forcing_ratio):
         loss = self.loss
@@ -116,18 +117,20 @@ class SupervisedTrainer(object):
         losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
         # Now we perform backpropagation.
-        # In the case of pre-training, we only back-propagate through the executor.
-        # In training mode, only the understander (with RL)
-        if self.pre_train:
+        # In the case of pre-training mode or simultaneous learning, we back-propagate through the executor.
+        if self.pre_train or self.train_regime == 'simultaneous':
             model.zero_grad()
             for i, loss in enumerate(losses):
                 loss.scale_loss(self.loss_weights[i])
                 loss.backward(retain_graph=True)
             self.optimizer.step()
 
-            understander_model.finish_episode()
+            # In the case of simultaneuous learning, we shouldn't stop the episode just yet.
+            if self.train_regime != 'simultaneous':
+                understander_model.finish_episode()
 
-        else:
+        # In the case of training mode or simultaneous learning, we back-propagete thourgh the understander
+        if not self.pre_train or self.train_regime == 'simultaneous':
             understander_model.zero_grad()
 
             if self.understander_train_method == 'rl':
@@ -219,23 +222,28 @@ class SupervisedTrainer(object):
         for epoch in range(start_epoch, n_epochs + 1):
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
-            # First 50% of epochs we are in pre-train. The next we are in train mode
-            if epoch < n_epochs/2:
-                self.pre_train = True
-                batch_generator = batch_iterator_pre_train.__iter__()
+            if self.train_regime == 'two-stage':
+                # First 50% of epochs we are in pre-train. The next we are in train mode
+                if epoch < n_epochs/2:
+                    self.pre_train = True
+                    batch_generator = batch_iterator_pre_train.__iter__()
 
-            else:
-                if self.pre_train:
-                    raw_input("Pre-training is done. Press enter to start training the undestander")
-                self.pre_train = False
+                else:
+                    if self.pre_train:
+                        raw_input("Pre-training is done. Press enter to start training the undestander")
+                    self.pre_train = False
+                    batch_generator = batch_iterator_train.__iter__()
+
+            elif self.train_regime == 'simultaneous':
+                # TODO: What to do about this?
+                # consuming seen batches from previous training
                 batch_generator = batch_iterator_train.__iter__()
 
-            # batch_generator = batch_iterator.__iter__()
+                for _ in range((epoch - 1) * steps_per_epoch, step):
+                    next(batch_generator)
 
-            # TODO: What to do about this?
-            # # consuming seen batches from previous training
-            # for _ in range((epoch - 1) * steps_per_epoch, step):
-            #     next(batch_generator)
+                # Makes sure that we use the understander's output in the Evaluator instead of the data
+                self.pre_train = False
 
             model.train(True)
             understander_model.train(True)

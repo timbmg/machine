@@ -73,6 +73,7 @@ parser.add_argument('--sample_infer', type=str, choices=['full', 'gumbel', 'argm
 parser.add_argument('--initial_temperature', type=float, default=1, help='(Initial) temperature to use for gumbel-softmax')
 parser.add_argument('--learn_temperature', action='store_true', help='Whether the temperature should be a learnable parameter')
 parser.add_argument('--init_exec_dec_with', type=str, choices=['encoder', 'new'], help='The decoder of the executor can be initialized either with its last encoder state, or with a new (learnable) vector')
+parser.add_argument('--train_regime', type=str, choices=['two-stage', 'simultaneous'], help="In 'two-stage' training we first train the executor with hard guidance for n/2 epochs and then the understander for n/2 epochs. In 'simultaneous' training, we train both models together without any supervision on the attention.")
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -270,7 +271,8 @@ t = SupervisedTrainer(loss=losses,
                       print_every=opt.print_every,
                       expt_dir=opt.output_dir,
                       epsilon=opt.epsilon,
-                      understander_train_method=opt.understander_train_method)
+                      understander_train_method=opt.understander_train_method,
+                      train_regime=opt.train_regime)
 
 seq2seq, logs = t.train(model=seq2seq,
                   understander_model=understander_model,
