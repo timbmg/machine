@@ -66,7 +66,7 @@ class DecoderRNN(BaseRNN):
     KEY_SEQUENCE = 'sequence'
 
     def __init__(self, vocab_size, max_len, hidden_size,
-            sos_id, eos_id, sample_train, sample_infer, initial_temperature, learn_temperature,
+            sos_id, eos_id, sample_train, sample_infer, initial_temperature, learn_temperature, init_exec_dec_with,
             n_layers=1, rnn_cell='gru', bidirectional=False,
             input_dropout_p=0, dropout_p=0, use_attention=False, attention_method=None, full_focus=False):
         super(DecoderRNN, self).__init__(vocab_size, max_len, hidden_size,
@@ -118,6 +118,18 @@ class DecoderRNN(BaseRNN):
             self.out = nn.Linear(self.hidden_size, self.output_size)
             if self.full_focus:
                 self.ffocus_merge = nn.Linear(2*self.hidden_size, hidden_size)
+
+        # If we initialize the executor's decoder with a new vector instead of the last encoder state
+        # We initialize it as parameter here.
+        self.init_exec_dec_with = init_exec_dec_with
+        if self.init_exec_dec_with == 'new':
+            if isinstance(self.rnn, nn.LSTM):
+                self.hidden0 = (
+                    nn.Parameter(torch.zeros([self.n_layers, 1, self.hidden_size])),
+                    nn.Parameter(torch.zeros([self.n_layers, 1, self.hidden_size])))
+
+            elif isinstance(self.rnn, nn.GRU):
+                self.hidden0 = nn.Parameter(torch.zeros([self.n_layers, 1, self.hidden_size]))
 
     def forward_step(self, input_var, hidden, encoder_outputs, function, **attention_method_kwargs):
         """
@@ -279,13 +291,25 @@ class DecoderRNN(BaseRNN):
         return decoder_outputs, decoder_hidden, ret_dict
 
     def _init_state(self, encoder_hidden):
-        """ Initialize the encoder hidden state. """
-        if encoder_hidden is None:
-            return None
-        if isinstance(encoder_hidden, tuple):
-            encoder_hidden = tuple([self._cat_directions(h) for h in encoder_hidden])
-        else:
-            encoder_hidden = self._cat_directions(encoder_hidden)
+        if self.init_exec_dec_with == 'encoder':
+            """ Initialize the encoder hidden state. """
+            if encoder_hidden is None:
+                return None
+            if isinstance(encoder_hidden, tuple):
+                encoder_hidden = tuple([self._cat_directions(h) for h in encoder_hidden])
+            else:
+                encoder_hidden = self._cat_directions(encoder_hidden)
+
+        elif self.init_exec_dec_with == 'new':
+            if isinstance(self.hidden0, tuple):
+                batch_size = encoder_hidden[0].size(1)
+                encoder_hidden = (
+                    self.hidden0[0].expand(-1, batch_size, -1),
+                    self.hidden0[1].expand(-1, batch_size, -1))
+            else:
+                batch_size = encoder_hidden.size(1)
+                encoder_hidden = self.hidden0.expand(-1, batch_size, -1)
+
         return encoder_hidden
 
     def _cat_directions(self, h):

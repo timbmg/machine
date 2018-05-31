@@ -17,7 +17,7 @@ TEST_PATH5="${DATASETS_PATH}/longer_compositions_new.tsv"
 OUTPUT_DIR=example
 
 MAX_LEN=50
-RNN_CELL='lstm'
+RNN_CELL='gru'
 EMBEDDING_SIZE=32
 HIDDEN_SIZE=256
 N_LAYERS=1
@@ -41,6 +41,7 @@ SAMPLE_TRAIN='full' # In supervised setting we can either use the 'full' attenti
 SAMPLE_INFER='full' # In supervised setting we can either use the 'full' attention vector, sample using 'gumbel' or use 'argmax' ar inference
 INIT_TEMP=1 # (Initial) temperature for gumbel-softmax
 LEARN_TEMP='--learn_temperature' # Whether to learn the temperature as a parameter
+INIT_EXEC_DEC_WITH='new' # Initialize the executor's decoder with it's last encoder, or with a new learable vector
 
 echo "Start training"
 python train_model.py \
@@ -71,4 +72,5 @@ python train_model.py \
     --sample_train $SAMPLE_TRAIN \
     --sample_infer $SAMPLE_INFER \
     --initial_temperature $INIT_TEMP \
+    --init_exec_dec_with $INIT_EXEC_DEC_WITH \
     "${LEARN_TEMP}"
