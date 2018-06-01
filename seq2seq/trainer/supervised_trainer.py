@@ -121,58 +121,70 @@ class SupervisedTrainer(object):
         # Calculate the losses of the executor
         losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
+
         # Now we perform backpropagation.
-        # In the case of pre-training mode or simultaneous learning, we back-propagate through the executor.
-        if self.pre_train or self.train_regime == 'simultaneous':
+        # In the case of simultaneous learning, we just backprop the losses once, and update both models's parameters
+        if self.train_regime == 'simultaneous':
             model.zero_grad()
+            understander_model.zero_grad()
             for i, loss in enumerate(losses):
                 loss.scale_loss(self.loss_weights[i])
                 loss.backward(retain_graph=True)
             self.optimizer.step()
+            self.understander_optimizer.step()
 
-            # In the case of simultaneuous learning, we shouldn't stop the episode just yet.
-            if self.train_regime != 'simultaneous':
-                understander_model.finish_episode()
+            understander_model.finish_episode()
 
-        # In the case of training mode or simultaneous learning, we back-propagete thourgh the understander
-        if not self.pre_train or self.train_regime == 'simultaneous':
-            understander_model.zero_grad()
-
-            if self.understander_train_method == 'rl':
-                # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
-                # Actually, I think we should use word accuracy for the reward function of the understander.
-                # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
-                loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
-
-                rewards = []
-                for action_iter in range(len(decoder_outputs)):
-                    prediction = decoder_outputs[action_iter]
-                    # +1 because target_variable includes SOS which the prediction of course doesn't
-                    ground_truth = target_variable['decoder_output'][:,action_iter+1]
-                    
-                    # Since loss is usually in range [0-3], where a loss of 0 should give the highest reward to the undestander,
-                    # we use as reward function: (1/3) * (3-loss).
-                    # This is because RL seems to be very unstable when we allow negative rewards. We even clip the rewards
-                    # to [0,1] to make sure this doesn't happen
-                    import numpy
-                    step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
-                    rewards.append(step_reward)
-
-                understander_model.set_rewards(rewards)
-
-                # Calculate discounted rewards and policy loss
-                policy_loss = understander_model.finish_episode()
-                policy_loss.backward()
-
-            elif self.understander_train_method == 'supervised':
+        elif self.train_regime == 'two-stage':
+            # In the case of pre-training mode, we update only the executor.
+            if self.pre_train:
+                model.zero_grad()
                 for i, loss in enumerate(losses):
                     loss.scale_loss(self.loss_weights[i])
                     loss.backward(retain_graph=True)
+                self.optimizer.step()
 
                 understander_model.finish_episode()
 
-            # Update understander
-            self.understander_optimizer.step()
+            # In the case of training mode, we update only the understander
+            if not self.pre_train:
+                understander_model.zero_grad()
+
+                if self.understander_train_method == 'rl':
+                    # TODO: This loss metric should be initialized in train_model and passed to the trainer. (And we shouldn't hard-code the ignore_index value)
+                    # Actually, I think we should use word accuracy for the reward function of the understander.
+                    # At least, we shouldn't rewrite code that is already in loss.py and metrics.py
+                    loss_func = torch.nn.NLLLoss(ignore_index=-1, reduce=False)
+
+                    rewards = []
+                    for action_iter in range(len(decoder_outputs)):
+                        prediction = decoder_outputs[action_iter]
+                        # +1 because target_variable includes SOS which the prediction of course doesn't
+                        ground_truth = target_variable['decoder_output'][:,action_iter+1]
+                        
+                        # Since loss is usually in range [0-3], where a loss of 0 should give the highest reward to the undestander,
+                        # we use as reward function: (1/3) * (3-loss).
+                        # This is because RL seems to be very unstable when we allow negative rewards. We even clip the rewards
+                        # to [0,1] to make sure this doesn't happen
+                        import numpy
+                        step_reward = list(numpy.clip((3-loss_func(prediction, ground_truth).detach().cpu().numpy())/3, 0, 1))
+                        rewards.append(step_reward)
+
+                    understander_model.set_rewards(rewards)
+
+                    # Calculate discounted rewards and policy loss
+                    policy_loss = understander_model.finish_episode()
+                    policy_loss.backward()
+
+                elif self.understander_train_method == 'supervised':
+                    for i, loss in enumerate(losses):
+                        loss.scale_loss(self.loss_weights[i])
+                        loss.backward(retain_graph=True)
+
+                    understander_model.finish_episode()
+
+                # Update understander
+                self.understander_optimizer.step()
 
         return losses
 
