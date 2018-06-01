@@ -17,6 +17,7 @@ from seq2seq.loss import NLLLoss, AttentionLoss
 from seq2seq.metrics import WordAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.util.checkpoint import Checkpoint
+from seq2seq.util.callback import CallbackContainer, Logger, ModelCheckpoint
 from seq2seq.util.log import Log
 
 class SupervisedTrainer(object):
@@ -76,14 +77,11 @@ class SupervisedTrainer(object):
         return losses
 
     def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
-                       dev_data=None, monitor_data=[], teacher_forcing_ratio=0,
+                       dev_data=None, callbacks=[], monitor_data=[], 
+                       teacher_forcing_ratio=0,
                        top_k=5):
-        log = self.logger
 
-        print_loss_total = defaultdict(float)  # Reset every print_every
-        epoch_loss_total = defaultdict(float)  # Reset every epoch
-        epoch_loss_avg = defaultdict(float)
-        print_loss_avg = defaultdict(float)
+        self.set_callbacks(callbacks, top_k=top_k, data=data, dev_data=dev_data)
 
         iterator_device = torch.cuda.current_device() if torch.cuda.is_available() else -1
         batch_iterator = torchtext.data.BucketIterator(
@@ -92,127 +90,112 @@ class SupervisedTrainer(object):
             sort_key=lambda x: len(x.src),
             device=iterator_device, repeat=False)
 
+        val_data = dev_data or data
+
         steps_per_epoch = len(batch_iterator)
         total_steps = steps_per_epoch * n_epochs
 
-        step = start_step
-        step_elapsed = 0
+        info = dict(zip(['steps_per_epoch', 'total_steps'],\
+                [steps_per_epoch, total_steps]))
+
+        info['step'] = start_step
+        info['start_epoch'] = start_epoch
+        info['epoch'] = start_epoch
+        info['start_step'] = start_step
+        info['step_elapsed'] = 0
+
+        info['model'] = model       # TODO I find this also a bit hacky
 
         # store initial model to be sure at least one model is stored
         val_data = dev_data or data
+
         losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
 
-        total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
-        log.info(log_msg)
+        info['losses'] = losses
+        info['metrics'] = metrics
 
+        self.callbacks.on_train_begin(info)
+
+        # TODO this should also be in a callback
         logs = Log()
-        loss_best = top_k*[total_loss]
-        best_checkpoints = top_k*[None]
-        best_checkpoints[0] = model_name
-
-        Checkpoint(model=model,
-                   optimizer=self.optimizer,
-                   epoch=start_epoch, step=start_step,
-                   input_vocab=data.fields[seq2seq.src_field_name].vocab,
-                   output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir, name=model_name)
-
 
         for epoch in range(start_epoch, n_epochs + 1):
-            log.info("Epoch: %d, Step: %d" % (epoch, step))
+
+            self.callbacks.on_epoch_begin(epoch, info)
 
             batch_generator = batch_iterator.__iter__()
 
             # consuming seen batches from previous training
-            for _ in range((epoch - 1) * steps_per_epoch, step):
+            for _ in range((epoch - 1) * steps_per_epoch, info['step']):
                 next(batch_generator)
 
             model.train(True)
             for batch in batch_generator:
-                step += 1
-                step_elapsed += 1
+
+                self.callbacks.on_batch_begin(info, batch)
+                info['step'] += 1
+                info['step_elapsed'] += 1
 
                 input_variables, input_lengths, target_variables = self.get_batch_data(batch)
 
                 losses = self._train_batch(input_variables, input_lengths.tolist(), target_variables, model, teacher_forcing_ratio)
 
-                # Record average loss
-                for loss in losses:
-                    name = loss.log_name
-                    print_loss_total[name] += loss.get_loss()
-                    epoch_loss_total[name] += loss.get_loss()
+                info['losses'] = losses
 
                 # print log info according to print_every parm
-                if step % self.print_every == 0 and step_elapsed > self.print_every:
-                    for loss in losses:
-                        name = loss.log_name
-                        print_loss_avg[name] = print_loss_total[name] / self.print_every
-                        print_loss_total[name] = 0
+                if info['step'] % self.print_every == 0 and info['step_elapsed'] >= self.print_every:
 
                     m_logs = {}
                     train_losses, train_metrics = self.evaluator.evaluate(model, data, self.get_batch_data)
-                    train_loss, train_log_msg, model_name = self.get_losses(train_losses, train_metrics, step)
-                    logs.write_to_log('Train', train_losses, train_metrics, step)
-                    logs.update_step(step)
+                    train_loss, train_log_msg, model_name = self.get_losses(train_losses, train_metrics, info['step'])
+                    logs.write_to_log('Train', train_losses, train_metrics, info['step'])
+                    logs.update_step(info['step'])
 
                     m_logs['Train'] = train_log_msg
 
                     # compute vals for all monitored sets
                     for m_data in monitor_data:
-                        losses, metrics = self.evaluator.evaluate(model, monitor_data[m_data], self.get_batch_data)
-                        total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
+                        m_losses, m_metrics = self.evaluator.evaluate(model, monitor_data[m_data], self.get_batch_data)
+                        total_loss, log_msg, model_name = self.get_losses(m_losses, m_metrics, info['step'])
                         m_logs[m_data] = log_msg
-                        logs.write_to_log(m_data, losses, metrics, step)
+                        logs.write_to_log(m_data, m_losses, m_metrics, info['step'])
 
                     all_losses = ' '.join(['%s:\t %s\n' % (os.path.basename(name), m_logs[name]) for name in m_logs])
 
                     log_msg = 'Progress %d%%, %s' % (
-                            step / total_steps * 100,
+                            info['step'] / total_steps * 100,
                             all_losses)
 
-                    log.info(log_msg)
+                    info['log_msg'] = log_msg
 
                 # check if new model should be saved
-                if step % self.checkpoint_every == 0 or step == total_steps:
+                if info['step'] % self.checkpoint_every == 0 or info['step'] == total_steps:
                     # compute dev loss
                     losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
-                    total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
-                    max_eval_loss = max(loss_best)
-                    if total_loss < max_eval_loss:
-                            index_max = loss_best.index(max_eval_loss)
-                            # rm prev model
-                            if best_checkpoints[index_max] is not None:
-                                shutil.rmtree(os.path.join(self.expt_dir, best_checkpoints[index_max]))
-                            best_checkpoints[index_max] = model_name
-                            loss_best[index_max] = total_loss
+                    info['val_losses'] = losses
 
-                            # save model
-                            Checkpoint(model=model,
-                                       optimizer=self.optimizer,
-                                       epoch=epoch, step=step,
-                                       input_vocab=data.fields[seq2seq.src_field_name].vocab,
-                                       output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir, name=model_name)
+                self.callbacks.on_batch_end(batch, info)
 
-            if step_elapsed == 0: continue
+            if info['step_elapsed'] == 0: continue
 
-            for loss in losses:
-                epoch_loss_avg[loss.log_name] = epoch_loss_total[loss.log_name] / min(steps_per_epoch, step - start_step)
-                epoch_loss_total[loss.log_name] = 0
-
-            loss_msg = ' '.join(['%s: %.4f' % (loss.log_name, loss.get_loss()) for loss in losses])
-            log_msg = "Finished epoch %d: Train %s" % (epoch, loss_msg)
+            log_msg = ''
 
             if dev_data is not None:
                 losses, metrics = self.evaluator.evaluate(model, dev_data, self.get_batch_data)
-                loss_total, log_, model_name = self.get_losses(losses, metrics, step)
+                loss_total, log_, model_name = self.get_losses(losses, metrics, info['step'])
 
                 self.optimizer.update(loss_total, epoch)    # TODO check if this makes sense!
                 log_msg += ", Dev set: " + log_
                 model.train(mode=True)
             else:
-                self.optimizer.update(epoch_loss_avg, epoch) # TODO check if this makes sense!
+                # TODO THIS IS SUPER HACKY, UPDATE IT!!!
+                self.optimizer.update(self.callbacks.callbacks[0].epoch_loss_avg, epoch)
 
-            log.info(log_msg)
+            self.callbacks.on_epoch_end(epoch, info)
+            info['epoch'] += 1
+
+        self.callbacks.on_train_end(info)
 
         return logs
 
@@ -276,6 +259,16 @@ class SupervisedTrainer(object):
                             teacher_forcing_ratio=teacher_forcing_ratio,
                             top_k=top_k)
         return model, logs
+
+    def set_callbacks(self, callbacks, data, dev_data, top_k):
+        """
+        Create a callback collection and associate it
+        with the current trainer.
+        """
+        # every training outcomes are logged and models
+        callbacks = [Logger(), ModelCheckpoint(data, dev_data, top_k=top_k)] + callbacks
+        self.callbacks = CallbackContainer(callbacks)
+        self.callbacks.set_trainer(self)
 
     @staticmethod
     def get_batch_data(batch):
