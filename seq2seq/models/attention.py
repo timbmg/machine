@@ -57,10 +57,11 @@ class Attention(nn.Module):
         if learn_temperature:
             # We use exp to make sure the temperature is always positive. 
             # To be sure that the initial temperature is actually as specified, we first take the log.
-            initial_temperature = torch.log(torch.tensor(initial_temperature))
-            self.temperature = nn.Parameter(torch.exp(initial_temperature))
+            self.temperature = nn.Parameter(torch.tensor(initial_temperature))
+            self.temperature_activation = nn.ReLU()
         else:
             self.temperature = torch.tensor(initial_temperature)
+
 
     def set_mask(self, mask):
         """
@@ -95,8 +96,9 @@ class Attention(nn.Module):
                 attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
 
             elif self.sample_train == 'gumbel':
+                temperature = self.temperature_activation(self.temperature)
                 attn = F.log_softmax(attn.view(-1, input_size), dim=1)
-                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=self.temperature, eps=1e-20)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, hard=True, tau=temperature, eps=1e-20)
                 attn = attn_hard.view(batch_size, -1, input_size)
 
         # Inference mode
@@ -105,16 +107,15 @@ class Attention(nn.Module):
                 attn = F.softmax(attn.view(-1, input_size), dim=1).view(batch_size, -1, input_size)
 
             elif self.sample_infer == 'gumbel':
+                temperature = self.temperature_activation(self.temperature)
                 attn = F.log_softmax(attn.view(-1, input_size), dim=1)
-                attn_hard, attn_soft = gumbel_softmax(logits=attn, tau=self.temperature, eps=1e-20)
+                attn_hard, attn_soft = gumbel_softmax(logits=attn, hard=True, tau=temperature, eps=1e-20)
                 attn = attn_hard.view(batch_size, -1, input_size)
 
             elif self.sample_infer == 'argmax':
                 argmax = attn.argmax(dim=2, keepdim=True)
                 attn = torch.zeros_like(attn)
                 attn.scatter_(dim=2, index=argmax, value=1)
-
-        print(attn[0])
 
         # (batch, out_len, in_len) * (batch, in_len, dim) -> (batch, out_len, dim)
         context = torch.bmm(attn, encoder_states)

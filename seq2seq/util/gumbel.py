@@ -1,7 +1,7 @@
 import torch
 from torch.nn.functional import softmax
 
-def _sample_gumbel(shape, eps=1e-10, out=None):
+def _sample_gumbel(shape, eps, out=None):
     """
     Sample from Gumbel(0, 1)
 
@@ -13,7 +13,7 @@ def _sample_gumbel(shape, eps=1e-10, out=None):
     return - torch.log(eps - torch.log(U + eps))
 
 
-def _gumbel_softmax_sample(logits, tau=1, eps=1e-10):
+def _gumbel_softmax_sample(logits, tau, eps):
     """
     Draw a sample from the Gumbel-Softmax distribution
 
@@ -27,7 +27,7 @@ def _gumbel_softmax_sample(logits, tau=1, eps=1e-10):
     return softmax(y / tau, dims - 1)
 
 
-def gumbel_softmax(logits, tau=1, hard=False, eps=1e-10):
+def gumbel_softmax(logits, tau, hard, eps):
     """
     Sample from the Gumbel-Softmax distribution and optionally discretize.
     Args:

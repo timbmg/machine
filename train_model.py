@@ -210,8 +210,10 @@ else:
     if torch.cuda.is_available():
         seq2seq.cuda()
 
-    for param in seq2seq.parameters():
-        param.data.uniform_(-0.08, 0.08)
+    for param in seq2seq.named_parameters():
+        # Don't reinitialize the gumbel temperature
+        if param[0] != 'decoder.attention.temperature':
+            param[1].data.uniform_(-0.08, 0.08)
 
 input_vocabulary = input_vocab.itos
 output_vocabulary = output_vocab.itos

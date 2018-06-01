@@ -183,23 +183,15 @@ class DecoderRNN(BaseRNN):
         # vectors instead of single indices. As soon as we see that the understander has provided these full vectors, we change the attention method
         # Must be solved more nicely in the future.
         if provided_attention_vectors is not None: 
-            self.attention = Attention(
+            self.attention.method = self.attention.get_method(
                 dim=self.hidden_size,
-                method='provided_attention_vectors',
-                sample_train=self.sample_train,
-                sample_infer=self.sample_infer,
-                initial_temperature=self.initial_temperature,
-                learn_temperature=self.learn_temperature)
+                method='provided_attention_vectors')
         # When storing a checkpoint, and after training, we will use the evaluator again with normal attention indices,
         # so we must change back the attention method
         if provided_attention is not None:
-            self.attention = Attention(
+            self.attention.method = self.attention.get_method(
                 dim=self.hidden_size,
-                method='hard',
-                sample_train=self.sample_train,
-                sample_infer=self.sample_infer,
-                initial_temperature=self.initial_temperature,
-                learn_temperature=self.learn_temperature)
+                method='hard')
 
         ret_dict = dict()
         if self.use_attention:

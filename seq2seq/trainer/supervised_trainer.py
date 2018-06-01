@@ -225,6 +225,8 @@ class SupervisedTrainer(object):
 
 
         for epoch in range(start_epoch, n_epochs + 1):
+            log.info("Temperature: {}".format(model.decoder.attention.temperature.data.item()))
+
             log.info("Epoch: %d, Step: %d" % (epoch, step))
 
             if self.train_regime == 'two-stage':
@@ -335,6 +337,13 @@ class SupervisedTrainer(object):
                 # TODO: Add understander_optimzer? 
                 self.optimizer.update(loss_total, epoch)    # TODO check if this makes sense!
                 log_msg += ", Dev set: " + log_
+
+                losses, metrics = self.evaluator.evaluate(model, understander_model, data, self.get_batch_data, pre_train=self.pre_train)
+                loss_total, log_, model_name = self.get_losses(losses, metrics, step)
+
+                # TODO: Add understander_optimzer? 
+                log_msg += ", Train set: " + log_
+
                 model.train(mode=True)
             else:
                 # TODO: Add understander optimzer?
