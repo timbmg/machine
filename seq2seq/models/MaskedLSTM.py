@@ -39,7 +39,7 @@ class MaskedParameterMatrix(nn.Module):
         return out
 
 
-class GatedLSTM(nn.Module):
+class MaskedLSTM(nn.Module):
 
     def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feat'):
 

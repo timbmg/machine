@@ -36,7 +36,8 @@ parser.add_argument('--output_dir', default='../models', help='Path to model dir
 parser.add_argument('--epochs', type=int, help='Number of epochs', default=6)
 parser.add_argument('--optim', type=str, help='Choose optimizer', choices=['adam', 'adadelta', 'adagrad', 'adamax', 'rmsprop', 'sgd'])
 parser.add_argument('--max_len', type=int, help='Maximum sequence length', default=50)
-parser.add_argument('--rnn_cell', help="Chose type of rnn cell", default='lstm')
+parser.add_argument('--encoder_cell', help="Chose type of rnn cell for encoder", default='lstm')
+parser.add_argument('--decoder_cell', help="Chose type of rnn cell dor decoder", default='lstm')
 parser.add_argument('--bidirectional', action='store_true', help="Flag for bidirectional encoder")
 parser.add_argument('--embedding_size', type=int, help='Embedding size', default=128)
 parser.add_argument('--hidden_size', type=int, help='Hidden layer size', default=128)
@@ -199,7 +200,7 @@ else:
                          dropout_p=opt.dropout_p_encoder,
                          n_layers=opt.n_layers,
                          bidirectional=opt.bidirectional,
-                         rnn_cell=opt.rnn_cell,
+                         rnn_cell=opt.encoder_cell,
                          variable_lengths=True)
     decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
                          dropout_p=opt.dropout_p_decoder,
@@ -208,7 +209,7 @@ else:
                          attention_method=opt.attention_method,
                          full_focus=opt.full_focus,
                          bidirectional=opt.bidirectional,
-                         rnn_cell=opt.rnn_cell,
+                         rnn_cell=opt.decoder_cell,
                          eos_id=tgt.eos_id, sos_id=tgt.sos_id)
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
@@ -224,13 +225,13 @@ output_vocabulary = output_vocab.itos
 # print "Input vocabulary:"
 # for i, word in enumerate(input_vocabulary):
 #     print i, word
-# 
+#
 # print "Output vocabulary:"
 # for i, word in enumerate(output_vocabulary):
 #     print i, word
-# 
+#
 # raw_input()
-# 
+#
 
 ##############################################################################
 # train model
@@ -265,14 +266,14 @@ metrics = [WordAccuracy(ignore_index=pad), SequenceAccuracy(ignore_index=pad), F
 checkpoint_path = os.path.join(opt.output_dir, opt.load_checkpoint) if opt.resume else None
 
 # create trainer
-t = SupervisedTrainer(loss=losses, metrics=metrics, 
+t = SupervisedTrainer(loss=losses, metrics=metrics,
                       loss_weights=loss_weights,
                       batch_size=opt.batch_size,
                       eval_batch_size=opt.eval_batch_size,
                       checkpoint_every=opt.save_every,
                       print_every=opt.print_every, expt_dir=opt.output_dir)
 
-seq2seq, logs = t.train(seq2seq, train, 
+seq2seq, logs = t.train(seq2seq, train,
                   num_epochs=opt.epochs, dev_data=dev,
                   monitor_data=monitor_data,
                   optimizer=opt.optim,
