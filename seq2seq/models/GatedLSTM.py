@@ -4,9 +4,51 @@ import torch.nn.functional as F
 
 import math
 
+class MaskedParameterMatrix(nn.Module):
+
+    def __init__(self, in_features, out_features, wise='feat'):
+
+        super().__init__()
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.wise = wise
+
+        if wise == 'feat':
+            mask_factor = 1
+        elif wise == 'elem':
+            mask_factor = in_features
+        else:
+            raise ValueError()
+
+        self.W = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.W_mask = nn.Parameter(torch.Tensor(out_features*mask_factor, in_features))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1.0 / math.sqrt(self.out_features)
+        for weight in self.parameters():
+            torch.nn.init.uniform_(weight, -stdv, stdv)
+
+    def forward(self, input):
+
+        mask = F.sigmoid( F.linear(input, self.W_mask) )
+
+        if self.wise == 'feat':
+            out = mask * F.linear(input, self.W)
+
+        elif self.wise == 'elem':
+            out = F.linear(input, mask * self.W)
+
+        return out
+
+
+
+
 class GatedLSTM(nn.Module):
 
-    def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feature'):
+    def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feat'):
 
         super().__init__()
 
@@ -22,7 +64,11 @@ class GatedLSTM(nn.Module):
         if dropout > 0:
             raise NotImplementedError()
 
-        if wise not in ['feature', 'element']:
+        if wise == 'feat':
+            mask_factor = 1
+        elif wise == 'elem':
+            mask_factor = hidden_size
+        else:
             raise ValueError()
 
         self.input_size     = input_size
@@ -33,21 +79,22 @@ class GatedLSTM(nn.Module):
         self.dropout        = dropout
         self.wise           = wise
 
-        self.W_f = nn.Parameter(torch.Tensor(hidden_size, input_size))
-        self.U_f = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.W_f = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
+        self.U_f = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
         self.b_f = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_i = nn.Parameter(torch.Tensor(hidden_size, input_size))
-        self.U_i = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.W_i = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
+        self.U_i = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
         self.b_i = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_o = nn.Parameter(torch.Tensor(hidden_size, input_size))
-        self.U_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.W_o = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
+        self.U_o = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_c = nn.Parameter(torch.Tensor(hidden_size, input_size))
-        self.U_c = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
+        self.W_c = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
+        self.U_c = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
         self.b_c = nn.Parameter(torch.Tensor(hidden_size))
+
 
         self.reset_parameters()
 
@@ -79,10 +126,10 @@ class GatedLSTM(nn.Module):
 
             x = input[:, si].unsqueeze(1)
 
-            f = F.sigmoid(F.linear(x, self.W_f) + F.linear(h, self.U_f) + self.b_f)
-            i = F.sigmoid(F.linear(x, self.W_i) + F.linear(h, self.U_i) + self.b_i)
-            o = F.sigmoid(F.linear(x, self.W_o) + F.linear(h, self.U_o) + self.b_o)
-            c = f * c + F.tanh(F.linear(x, self.W_c) + F.linear(h, self.U_c) + self.b_c)
+            f = F.sigmoid( self.W_f(x) + self.U_f(h) + self.b_f )
+            i = F.sigmoid( self.W_i(x) + self.U_i(h) + self.b_i )
+            o = F.sigmoid( self.W_o(x) + self.U_o(h) + self.b_o )
+            c = f * c + F.tanh( self.W_c(x) + self.U_c(h) + self.b_c )
             h = o * c
 
             output.append(h)
