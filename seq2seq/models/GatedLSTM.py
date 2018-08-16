@@ -6,7 +6,7 @@ import math
 
 class MaskedParameterMatrix(nn.Module):
 
-    def __init__(self, in_features, out_features, wise='feat'):
+    def __init__(self, in_features, out_features, wise):
 
         super().__init__()
 
@@ -24,13 +24,6 @@ class MaskedParameterMatrix(nn.Module):
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
         self.W_mask = nn.Parameter(torch.Tensor(out_features*mask_factor, in_features))
 
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self.out_features)
-        for weight in self.parameters():
-            torch.nn.init.uniform_(weight, -stdv, stdv)
-
     def forward(self, input):
 
         mask = F.sigmoid( F.linear(input, self.W_mask) )
@@ -39,11 +32,10 @@ class MaskedParameterMatrix(nn.Module):
             out = mask * F.linear(input, self.W)
 
         elif self.wise == 'elem':
+            mask = mask.squeeze(1).transpose(1, 0)
             out = F.linear(input, mask * self.W)
 
         return out
-
-
 
 
 class GatedLSTM(nn.Module):
@@ -102,7 +94,6 @@ class GatedLSTM(nn.Module):
         stdv = 1.0 / math.sqrt(self.hidden_size)
         for weight in self.parameters():
             torch.nn.init.uniform_(weight, -stdv, stdv)
-
 
     def forward(self, input, hx=None):
 
