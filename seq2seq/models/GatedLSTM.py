@@ -32,8 +32,9 @@ class MaskedParameterMatrix(nn.Module):
             out = mask * F.linear(input, self.W)
 
         elif self.wise == 'elem':
-            mask = mask.squeeze(1).transpose(1, 0)
-            out = F.linear(input, mask * self.W)
+            mask = mask.squeeze(1).view(-1, self.out_features, self.in_features)
+            masked_weight = mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
+            out = torch.bmm(input, masked_weight.transpose(1, 2))
 
         return out
 
