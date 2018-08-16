@@ -6,7 +6,7 @@ import math
 
 class GatedLSTM(nn.Module):
 
-    def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0):
+    def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feature'):
 
         super().__init__()
 
@@ -33,20 +33,20 @@ class GatedLSTM(nn.Module):
         self.dropout        = dropout
         self.wise           = wise
 
-        self.W_f = nn.Linear(input_size, hidden_size, bias=False)
-        self.U_f = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_f = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        self.U_f = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_f = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_i = nn.Linear(input_size, hidden_size, bias=False)
-        self.U_i = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_i = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        self.U_i = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_i = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_o = nn.Linear(input_size, hidden_size, bias=False)
-        self.U_o = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_o = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        self.U_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_c = nn.Linear(input_size, hidden_size, bias=False)
-        self.U_c = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_c = nn.Parameter(torch.Tensor(hidden_size, input_size))
+        self.U_c = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_c = nn.Parameter(torch.Tensor(hidden_size))
 
         self.reset_parameters()
@@ -79,10 +79,10 @@ class GatedLSTM(nn.Module):
 
             x = input[:, si].unsqueeze(1)
 
-            f = F.sigmoid(self.W_f(x) + self.U_f(h) + self.b_f)
-            i = F.sigmoid(self.W_i(x) + self.U_i(h) + self.b_i)
-            o = F.sigmoid(self.W_o(x) + self.U_o(h) + self.b_o)
-            c = f * c + F.tanh(self.W_c(x) + self.U_c(h) + self.b_c)
+            f = F.sigmoid(F.linear(x, self.W_f) + F.linear(h, self.U_f) + self.b_f)
+            i = F.sigmoid(F.linear(x, self.W_i) + F.linear(h, self.U_i) + self.b_i)
+            o = F.sigmoid(F.linear(x, self.W_o) + F.linear(h, self.U_o) + self.b_o)
+            c = f * c + F.tanh(F.linear(x, self.W_c) + F.linear(h, self.U_c) + self.b_c)
             h = o * c
 
             output.append(h)
