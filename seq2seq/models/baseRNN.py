@@ -1,6 +1,7 @@
 """ A base class for RNN. """
 import torch.nn as nn
 
+from .GatedLSTM import GatedLSTM
 
 class BaseRNN(nn.Module):
     r"""
@@ -39,6 +40,8 @@ class BaseRNN(nn.Module):
             self.rnn_cell = nn.LSTM
         elif rnn_cell.lower() == 'gru':
             self.rnn_cell = nn.GRU
+        elif rnn_cell.lower() == 'gated_lstm':
+            self.rnn_cell = GatedLSTM
         else:
             raise ValueError("Unsupported RNN Cell: {0}".format(rnn_cell))
 
