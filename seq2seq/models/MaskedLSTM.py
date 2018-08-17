@@ -8,7 +8,7 @@ class MaskedParameterMatrix(nn.Module):
 
     def __init__(self, in_features, out_features, wise):
 
-        super().__init__()
+        super(MaskedParameterMatrix, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
@@ -43,7 +43,7 @@ class MaskedLSTM(nn.Module):
 
     def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feat'):
 
-        super().__init__()
+        super(MaskedLSTM, self).__init__()
 
         if n_layers > 1:
             raise NotImplementedError()
