@@ -4,11 +4,11 @@ import torch.nn.functional as F
 
 import math
 
-class MaskedParameterMatrix(nn.Module):
+class MaskedLinear(nn.Module):
 
     def __init__(self, in_features, out_features, wise):
 
-        super(MaskedParameterMatrix, self).__init__()
+        super(MaskedLinear, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
@@ -72,20 +72,20 @@ class MaskedLSTM(nn.Module):
         self.dropout        = dropout
         self.wise           = wise
 
-        self.W_f = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
-        self.U_f = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
+        self.W_f = MaskedLinear(input_size, hidden_size, wise=self.wise)
+        self.U_f = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_f = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_i = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
-        self.U_i = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
+        self.W_i = MaskedLinear(input_size, hidden_size, wise=self.wise)
+        self.U_i = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_i = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_o = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
-        self.U_o = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
+        self.W_o = MaskedLinear(input_size, hidden_size, wise=self.wise)
+        self.U_o = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
 
-        self.W_c = MaskedParameterMatrix(input_size, hidden_size, wise=self.wise)
-        self.U_c = MaskedParameterMatrix(hidden_size, hidden_size, wise=self.wise)
+        self.W_c = MaskedLinear(input_size, hidden_size, wise=self.wise)
+        self.U_c = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_c = nn.Parameter(torch.Tensor(hidden_size))
 
 
