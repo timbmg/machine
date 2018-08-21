@@ -58,6 +58,35 @@ class MaskedLinear(nn.Module):
 
 
 class MaskedLSTM(nn.Module):
+    """
+    Applies LSTM to a sequence with masked parameter access.
+
+    Args:
+        input_size (int): feature size of the input (e.g. embedding size)
+        hidden_size (int): the number of features in the hidden state `h`
+        n_layers (int): number of recurrent layers
+        batch_first (bool, optional):
+        bidirectional (bool, optional): if True, becomes a bidirectional encoder (default False)
+        dropout (float, optional): dropout probability for the output sequence (default: 0)
+        mask_input (string, optional): Either 'feat' for feature-wise or 'elem' for element masking of
+            the input gate parameters. Else vanilla linear transformations are used. (default 'feat')
+        mask_hidden (string, optional): Either 'feat' for feature-wise or 'elem' for element masking of
+            the hidden gate parameters. Else vanilla linear transformations are used. (default 'feat')
+
+    Inputs: input, hx
+        - **input** (batch, seq_len): tensor containing the features of the input sequence.
+        - **hx**: tensor containing the hidden states to initilize with. Defaults to zero tensor.
+
+    Outputs: output, (h, c)
+        - **output** (batch, seq_len, hidden_size): variable containing the output features of the input sequence
+        - **hx** (num_layers * num_directions, batch, hidden_size): last hidden state
+
+    Examples:
+        >> m_lstm = MaskedLSTM(10, 5, 1)
+        >> x = torch.FloatTensor(4, 8, 10)
+        >> y, hx = m_lstm(x) # [4, 8, 5], [1, 4, 5]
+
+    """
 
     def __init__(self, input_size, hidden_size, n_layers,
         batch_first=True, bidirectional=False, dropout=0,
