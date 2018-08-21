@@ -5,6 +5,24 @@ import torch.nn.functional as F
 import math
 
 class MaskedLinear(nn.Module):
+    """
+    Implements a linear transformation with masked parameter access.
+
+    Args:
+        in_features (int):
+        out_features (int):
+        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise masking of the
+            parameters.
+    Inputs: input
+        - **input**: torch.FloatTensor of size N*, in_features
+    Outputs: output
+        - **output**: torch.FloatTensor of size N*, out_features
+    Examples:
+        >> ml = MaskedLinear(10, 5, 'feat')
+        >> x = torch.FloatTensor(4, 10)
+        >> y = ml(x) # [4, 5]
+        
+    """
 
     def __init__(self, in_features, out_features, wise):
 
@@ -29,14 +47,14 @@ class MaskedLinear(nn.Module):
         mask = F.sigmoid( F.linear(input, self.W_mask) )
 
         if self.wise == 'feat':
-            out = mask * F.linear(input, self.W)
+            output = mask * F.linear(input, self.W)
 
         elif self.wise == 'elem':
             mask = mask.squeeze(1).view(-1, self.out_features, self.in_features)
             masked_weight = mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
-            out = torch.bmm(input, masked_weight.transpose(1, 2))
+            output = torch.bmm(input, masked_weight.transpose(1, 2))
 
-        return out
+        return output
 
 
 class MaskedLSTM(nn.Module):
