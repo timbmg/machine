@@ -68,35 +68,28 @@ class MaskedLSTM(nn.Module):
         self.mask_input     = mask_input
         self.mask_hidden    = mask_hidden
 
+        # Settings for the linear layers
         if mask_input in ['feat', 'elem']:
             input_args = input_size, hidden_size, mask_input
-            linear = MaskedLinear
+            input_linear = MaskedLinear
         else:
             input_args = input_size, hidden_size
-            linear = nn.Linear
-
-        self.W_f = linear(*input_args)
-        self.W_i = linear(*input_args)
-        self.W_o = linear(*input_args)
-        self.W_c = linear(*input_args)
+            input_linear = nn.Linear
 
         if mask_hidden in ['feat', 'elem']:
             hidden_args = hidden_size, hidden_size, mask_input
-            linear = MaskedLinear
+            hidden_linear = MaskedLinear
         else:
             hidden_args = hidden_size, hidden_size
-            linear = nn.Linear
+            hidden_linear = nn.Linear
 
-        self.U_f = linear(*hidden_args)
-        self.U_i = linear(*hidden_args)
-        self.U_o = linear(*hidden_args)
-        self.U_c = linear(*hidden_args)
-
-        self.b_f = nn.Parameter(torch.Tensor(hidden_size))
-        self.b_i = nn.Parameter(torch.Tensor(hidden_size))
-        self.b_o = nn.Parameter(torch.Tensor(hidden_size))
-        self.b_c = nn.Parameter(torch.Tensor(hidden_size))
-
+        # initialize parameters
+        gates = ['f', 'i', 'o', 'c']
+        self.W, self.U, self.b = dict(), dict(), dict()
+        for g in gates:
+            self.W[g] = input_linear(*input_args)
+            self.U[g] = hidden_linear(*hidden_args)
+            self.b[g] = nn.Parameter(torch.Tensor(hidden_size))
 
         self.reset_parameters()
 
@@ -127,10 +120,10 @@ class MaskedLSTM(nn.Module):
 
             x = input[:, si].unsqueeze(1)
 
-            f = F.sigmoid( self.W_f(x) + self.U_f(h) + self.b_f )
-            i = F.sigmoid( self.W_i(x) + self.U_i(h) + self.b_i )
-            o = F.sigmoid( self.W_o(x) + self.U_o(h) + self.b_o )
-            c = f * c + F.tanh( self.W_c(x) + self.U_c(h) + self.b_c )
+            f = F.sigmoid( self.W['f'](x) + self.U['f'](h) + self.b['f'] )
+            i = F.sigmoid( self.W['i'](x) + self.U['i'](h) + self.b['i'] )
+            o = F.sigmoid( self.W['o'](x) + self.U['o'](h) + self.b['o'] )
+            c = f * c + F.tanh( self.W['c'](x) + self.U['c'](h) + self.b['c'] )
             h = o * c
 
             output.append(h)
