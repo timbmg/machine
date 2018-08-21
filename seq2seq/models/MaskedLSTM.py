@@ -50,6 +50,7 @@ class MaskedLinear(nn.Module):
             output = mask * F.linear(input, self.W)
 
         elif self.wise == 'elem':
+            # TODO: This only works for 3D input right now
             mask = mask.squeeze(1).view(-1, self.out_features, self.in_features)
             masked_weight = mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
             output = torch.bmm(input, masked_weight.transpose(1, 2))
@@ -98,6 +99,7 @@ class MaskedLSTM(nn.Module):
             raise NotImplementedError()
 
         if batch_first == False:
+            # TODO: is this ever used in machine?
             raise NotImplementedError()
 
         if bidirectional == True:
@@ -124,7 +126,7 @@ class MaskedLSTM(nn.Module):
             input_linear = nn.Linear
 
         if mask_hidden in ['feat', 'elem']:
-            hidden_args = hidden_size, hidden_size, mask_input
+            hidden_args = hidden_size, hidden_size, mask_hidden
             hidden_linear = MaskedLinear
         else:
             hidden_args = hidden_size, hidden_size
@@ -147,13 +149,15 @@ class MaskedLSTM(nn.Module):
 
     def forward(self, input, hx=None):
 
-        batch_size = input.size(0) if self.batch_first else input.size(1)
 
         # deal with PackedSequence
         is_packed = isinstance(input, torch.nn.utils.rnn.PackedSequence)
         if is_packed:
             _, batch_sizes = input
             input, lengths = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=self.batch_first)
+
+        # get batch size
+        batch_size = input.size(0) if self.batch_first else input.size(1)
 
         # initilize hidden state
         if hx is None:
