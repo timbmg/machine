@@ -21,6 +21,7 @@ class TestMaskedLSTM(unittest.TestCase):
         self.assertIsInstance(masked_lstm.W['f'], MaskedLinear)
         self.assertIsInstance(masked_lstm.U['f'], MaskedLinear)
 
+
     def test_packed_sequence(self):
 
         x = torch.nn.utils.rnn.pack_padded_sequence(torch.FloatTensor(4, 8, 10), [8, 8, 8, 8],
@@ -34,6 +35,7 @@ class TestMaskedLSTM(unittest.TestCase):
         y, _ = masked_lstm(x)
         self.assertIsInstance(y, torch.FloatTensor)
 
+
     def test_output_sizes(self):
 
         x = torch.nn.utils.rnn.pack_padded_sequence(torch.FloatTensor(4, 8, 10), [8, 8, 8, 8],
@@ -43,6 +45,7 @@ class TestMaskedLSTM(unittest.TestCase):
         self.assertEqual(list(y.data.size()), [4*8, 5])
         self.assertEqual(list(hx[0].size()), [1, 4, 5])
         self.assertEqual(list(hx[1].size()), [1, 4, 5])
+        
 
     def test_hx_init(self):
 
