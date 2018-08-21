@@ -21,7 +21,7 @@ class MaskedLinear(nn.Module):
         >> ml = MaskedLinear(10, 5, 'feat')
         >> x = torch.FloatTensor(4, 10)
         >> y = ml(x) # [4, 5]
-        
+
     """
 
     def __init__(self, in_features, out_features, wise):
@@ -115,7 +115,7 @@ class MaskedLSTM(nn.Module):
         self.mask_input     = mask_input
         self.mask_hidden    = mask_hidden
 
-        # Settings for the linear layers
+        # settings for the linear layers
         if mask_input in ['feat', 'elem']:
             input_args = input_size, hidden_size, mask_input
             input_linear = MaskedLinear
@@ -147,13 +147,15 @@ class MaskedLSTM(nn.Module):
 
     def forward(self, input, hx=None):
 
+        batch_size = input.size(0) if self.batch_first else input.size(1)
+
+        # deal with PackedSequence
         is_packed = isinstance(input, torch.nn.utils.rnn.PackedSequence)
         if is_packed:
             _, batch_sizes = input
             input, lengths = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=self.batch_first)
 
-        batch_size = input.size(0) if self.batch_first else input.size(1)
-
+        # initilize hidden state
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
             hx = input.new_zeros(batch_size, self.n_layers * num_directions, self.hidden_size, requires_grad=False)
@@ -162,6 +164,7 @@ class MaskedLSTM(nn.Module):
             h, c = hx
             h, c = h.transpose(0, 1), c.transpose(0, 1)
 
+        # propagate input through lstm
         output = list()
         for si in range(input.size(1)):
 
@@ -175,10 +178,13 @@ class MaskedLSTM(nn.Module):
 
             output.append(h)
 
+        # collect outputs
         h, c = h.transpose(0, 1), c.transpose(0, 1)
         output = torch.cat(output, dim=1)
 
+        # repack
         if is_packed:
             output = torch.nn.utils.rnn.pack_padded_sequence(output, lengths, batch_first=self.batch_first)
+
 
         return output, (h, c)
