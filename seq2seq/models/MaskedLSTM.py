@@ -15,14 +15,14 @@ class MaskedLinear(nn.Module):
         self.wise = wise
 
         if wise == 'feat':
-            mask_factor = 1
+            masks_per_feature = 1
         elif wise == 'elem':
-            mask_factor = in_features
+            masks_per_feature = in_features
         else:
             raise ValueError()
 
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.W_mask = nn.Parameter(torch.Tensor(out_features*mask_factor, in_features))
+        self.W_mask = nn.Parameter(torch.Tensor(out_features*masks_per_feature, in_features))
 
     def forward(self, input):
 
