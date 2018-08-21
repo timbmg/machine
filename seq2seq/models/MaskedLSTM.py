@@ -41,7 +41,9 @@ class MaskedLinear(nn.Module):
 
 class MaskedLSTM(nn.Module):
 
-    def __init__(self, input_size, hidden_size, n_layers, batch_first=True, bidirectional=False, dropout=0, wise='feat'):
+    def __init__(self, input_size, hidden_size, n_layers,
+        batch_first=True, bidirectional=False, dropout=0,
+        mask_input='feat', mask_hidden='feat'):
 
         super(MaskedLSTM, self).__init__()
 
@@ -57,35 +59,42 @@ class MaskedLSTM(nn.Module):
         if dropout > 0:
             raise NotImplementedError()
 
-        if wise == 'feat':
-            mask_factor = 1
-        elif wise == 'elem':
-            mask_factor = hidden_size
-        else:
-            raise ValueError()
-
         self.input_size     = input_size
         self.hidden_size    = hidden_size
         self.n_layers       = n_layers
         self.batch_first    = batch_first
         self.bidirectional  = bidirectional
         self.dropout        = dropout
-        self.wise           = wise
+        self.mask_input     = mask_input
+        self.mask_hidden    = mask_hidden
 
-        self.W_f = MaskedLinear(input_size, hidden_size, wise=self.wise)
-        self.U_f = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
+        if mask_input in ['feat', 'elem']:
+            input_args = input_size, hidden_size, mask_input
+            linear = MaskedLinear
+        else:
+            input_args = input_size, hidden_size
+            linear = nn.Linear
+
+        self.W_f = linear(*input_args)
+        self.W_i = linear(*input_args)
+        self.W_o = linear(*input_args)
+        self.W_c = linear(*input_args)
+
+        if mask_hidden in ['feat', 'elem']:
+            hidden_args = hidden_size, hidden_size, mask_input
+            linear = MaskedLinear
+        else:
+            hidden_args = hidden_size, hidden_size
+            linear = nn.Linear
+
+        self.U_f = linear(*hidden_args)
+        self.U_i = linear(*hidden_args)
+        self.U_o = linear(*hidden_args)
+        self.U_c = linear(*hidden_args)
+
         self.b_f = nn.Parameter(torch.Tensor(hidden_size))
-
-        self.W_i = MaskedLinear(input_size, hidden_size, wise=self.wise)
-        self.U_i = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_i = nn.Parameter(torch.Tensor(hidden_size))
-
-        self.W_o = MaskedLinear(input_size, hidden_size, wise=self.wise)
-        self.U_o = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
-
-        self.W_c = MaskedLinear(input_size, hidden_size, wise=self.wise)
-        self.U_c = MaskedLinear(hidden_size, hidden_size, wise=self.wise)
         self.b_c = nn.Parameter(torch.Tensor(hidden_size))
 
 
