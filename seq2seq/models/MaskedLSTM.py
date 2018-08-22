@@ -4,15 +4,15 @@ import torch.nn.functional as F
 
 import math
 
+
 class MaskedLinear(nn.Module):
-    """
-    Implements a linear transformation with masked parameter access.
+    """Implements a linear transformation with masked parameter access.
 
     Args:
         in_features (int):
         out_features (int):
-        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise masking of the
-            parameters.
+        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise
+            masking of the parameters.
     Inputs: input
         - **input**: torch.FloatTensor of size N*, in_features
     Outputs: output
@@ -40,11 +40,12 @@ class MaskedLinear(nn.Module):
             raise ValueError()
 
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.W_mask = nn.Parameter(torch.Tensor(out_features*masks_per_feature, in_features))
+        self.W_mask = nn.Parameter(
+            torch.Tensor(out_features*masks_per_feature, in_features))
 
     def forward(self, input):
 
-        mask = F.sigmoid( F.linear(input, self.W_mask) )
+        mask = F.sigmoid(F.linear(input, self.W_mask))
 
         if self.wise == 'feat':
             output = mask * F.linear(input, self.W)
@@ -52,7 +53,8 @@ class MaskedLinear(nn.Module):
         elif self.wise == 'elem':
             # TODO: This only works for 3D input right now
             mask = mask.squeeze(1).view(-1, self.out_features, self.in_features)
-            masked_weight = mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
+            masked_weight = \
+                mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
             output = torch.bmm(input, masked_weight.transpose(1, 2))
 
         return output
@@ -67,20 +69,31 @@ class MaskedLSTM(nn.Module):
         hidden_size (int): the number of features in the hidden state `h`
         n_layers (int): number of recurrent layers
         batch_first (bool, optional):
-        bidirectional (bool, optional): if True, becomes a bidirectional encoder (default False)
-        dropout (float, optional): dropout probability for the output sequence (default: 0)
-        mask_input (string, optional): Either 'feat' for feature-wise or 'elem' for element masking of
-            the input gate parameters. Else vanilla linear transformations are used. (default 'feat')
-        mask_hidden (string, optional): Either 'feat' for feature-wise or 'elem' for element masking of
-            the hidden gate parameters. Else vanilla linear transformations are used. (default 'feat')
+        bidirectional (bool, optional):
+            if True, becomes a bidirectional encoder (default False)
+        dropout (float, optional):
+            dropout probability for the output sequence (default: 0)
+        mask_input (string, optional):
+            Either 'feat' for feature-wise or 'elem' for element masking of the
+            input gate parameters. Else vanilla linear transformations are used.
+            (default 'feat')
+        mask_hidden (string, optional):
+            Either 'feat' for feature-wise or 'elem'for element masking of the
+            hidden gate parameters. Else vanilla linear transformations are
+            used. (default 'feat')
 
     Inputs: input, hx
-        - **input** (batch, seq_len): tensor containing the features of the input sequence.
-        - **hx**: tensor containing the hidden states to initilize with. Defaults to zero tensor.
+        - **input** (batch, seq_len):
+            tensor containing the features of the input sequence.
+        - **hx**:
+            tensor containing the hidden states to initilize with. Defaults to
+            zero tensor.
 
     Outputs: output, (h, c)
-        - **output** (batch, seq_len, hidden_size): variable containing the output features of the input sequence
-        - **hx** (num_layers * num_directions, batch, hidden_size): last hidden state
+        - **output** (batch, seq_len, hidden_size):
+            variable containing the output features of the input sequence
+        - **hx** (num_layers * num_directions, batch, hidden_size):
+            last hidden state
 
     Examples:
         >> m_lstm = MaskedLSTM(10, 5, 1)
@@ -89,33 +102,33 @@ class MaskedLSTM(nn.Module):
 
     """
 
-    def __init__(self, input_size, hidden_size, n_layers,
-        batch_first=True, bidirectional=False, dropout=0,
-        mask_input='feat', mask_hidden='feat'):
+    def __init__(self, input_size, hidden_size, n_layers, batch_first=True,
+                 bidirectional=False, dropout=0, mask_input='elem',
+                 mask_hidden='elem'):
 
         super(MaskedLSTM, self).__init__()
 
         if n_layers > 1:
             raise NotImplementedError()
 
-        if batch_first == False:
+        if not batch_first:
             # TODO: is this ever used in machine?
             raise NotImplementedError()
 
-        if bidirectional == True:
+        if bidirectional:
             raise NotImplementedError()
 
         if dropout > 0:
             raise NotImplementedError()
 
-        self.input_size     = input_size
-        self.hidden_size    = hidden_size
-        self.n_layers       = n_layers
-        self.batch_first    = batch_first
-        self.bidirectional  = bidirectional
-        self.dropout        = dropout
-        self.mask_input     = mask_input
-        self.mask_hidden    = mask_hidden
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.n_layers = n_layers
+        self.batch_first = batch_first
+        self.bidirectional = bidirectional
+        self.dropout = dropout
+        self.mask_input = mask_input
+        self.mask_hidden = mask_hidden
 
         # settings for the linear layers
         if mask_input in ['feat', 'elem']:
@@ -149,20 +162,25 @@ class MaskedLSTM(nn.Module):
 
     def forward(self, input, hx=None):
 
-
         # deal with PackedSequence
         is_packed = isinstance(input, torch.nn.utils.rnn.PackedSequence)
         if is_packed:
             _, batch_sizes = input
-            input, lengths = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=self.batch_first)
+            input, lengths = torch.nn.utils.rnn.pad_packed_sequence(
+                input,
+                batch_first=self.batch_first)
 
         # get batch size
         batch_size = input.size(0) if self.batch_first else input.size(1)
 
-        # initilize hidden state
+        # initialize hidden state
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
-            hx = input.new_zeros(batch_size, self.n_layers * num_directions, self.hidden_size, requires_grad=False)
+            hx = input.new_zeros(
+                batch_size,
+                self.n_layers * num_directions,
+                self.hidden_size,
+                requires_grad=False)
             h, c = hx, hx
         else:
             h, c = hx
@@ -174,10 +192,11 @@ class MaskedLSTM(nn.Module):
 
             x = input[:, si].unsqueeze(1)
 
-            f = F.sigmoid( self.W['f'](x) + self.U['f'](h) + self.b['f'] )
-            i = F.sigmoid( self.W['i'](x) + self.U['i'](h) + self.b['i'] )
-            o = F.sigmoid( self.W['o'](x) + self.U['o'](h) + self.b['o'] )
-            c = f * c + F.tanh( self.W['c'](x) + self.U['c'](h) + self.b['c'] )
+            f = F.sigmoid(self.W['f'](x) + self.U['f'](h) + self.b['f'])
+            i = F.sigmoid(self.W['i'](x) + self.U['i'](h) + self.b['i'])
+            o = F.sigmoid(self.W['o'](x) + self.U['o'](h) + self.b['o'])
+            c = F.tanh(self.W['c'](x) + self.U['c'](h) + self.b['c']) * i \
+                + f * c
             h = o * c
 
             output.append(h)
@@ -188,7 +207,9 @@ class MaskedLSTM(nn.Module):
 
         # repack
         if is_packed:
-            output = torch.nn.utils.rnn.pack_padded_sequence(output, lengths, batch_first=self.batch_first)
-
+            output = torch.nn.utils.rnn.pack_padded_sequence(
+                output,
+                lengths,
+                batch_first=self.batch_first)
 
         return output, (h, c)
