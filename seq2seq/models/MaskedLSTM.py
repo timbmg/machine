@@ -48,11 +48,11 @@ class MaskedLinear(nn.Module):
         mask = F.sigmoid(F.linear(input, self.W_mask))
 
         if self.wise == 'feat':
-            output = mask * F.linear(input, self.W)
+            output = mask * F.linear(input, self.W) # BUG: For some reason W does not get initilized properly
 
         elif self.wise == 'elem':
             # TODO: This only works for 3D input right now
-            mask = mask.squeeze(1).view(-1, self.out_features, self.in_features)
+            mask = mask.view(-1, self.out_features, self.in_features)
             masked_weight = \
                 mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
             output = torch.bmm(input, masked_weight.transpose(1, 2))
@@ -75,8 +75,8 @@ class MaskedLSTM(nn.Module):
             dropout probability for the output sequence (default: 0)
         mask_input (string, optional):
             Either 'feat' for feature-wise or 'elem' for element masking of the
-            input gate parameters. Else vanilla linear transformations are used.
-            (default 'feat')
+            input gate parameters. Else vanilla linear transformations are
+            used. (default 'feat')
         mask_hidden (string, optional):
             Either 'feat' for feature-wise or 'elem'for element masking of the
             hidden gate parameters. Else vanilla linear transformations are
@@ -103,8 +103,8 @@ class MaskedLSTM(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layers, batch_first=True,
-                 bidirectional=False, dropout=0, mask_input='elem',
-                 mask_hidden='elem'):
+                 bidirectional=False, dropout=0, mask_input='feat',
+                 mask_hidden='feat'):
 
         super(MaskedLSTM, self).__init__()
 
@@ -156,6 +156,7 @@ class MaskedLSTM(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        # QUESTION: this is probably not required since done in train_model.py
         stdv = 1.0 / math.sqrt(self.hidden_size)
         for weight in self.parameters():
             torch.nn.init.uniform_(weight, -stdv, stdv)
@@ -170,8 +171,9 @@ class MaskedLSTM(nn.Module):
                 input,
                 batch_first=self.batch_first)
 
-        # get batch size
+        # get sizes
         batch_size = input.size(0) if self.batch_first else input.size(1)
+        sequence_size = input.size(1) if self.batch_first else input.size(0)
 
         # initialize hidden state
         if hx is None:
@@ -188,7 +190,7 @@ class MaskedLSTM(nn.Module):
 
         # propagate input through lstm
         output = list()
-        for si in range(input.size(1)):
+        for si in range(sequence_size):
 
             x = input[:, si].unsqueeze(1)
 
