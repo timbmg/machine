@@ -59,6 +59,10 @@ class MaskedLinear(nn.Module):
 
         return output
 
+    def __repr__(self):
+        return "MaskedLinear(in_features=%i, out_features=%i, wise=%s)"\
+               % (self.in_features, self.out_features, self.wise)
+
 
 class MaskedLSTM(nn.Module):
     """
