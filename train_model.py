@@ -66,6 +66,11 @@ parser.add_argument('--log-level', default='info', help='Logging level.')
 parser.add_argument('--write-logs', help='Specify file to write logs to after training')
 parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device to use')
 
+parser.add_argument('--encoder_rnn_cell_mask_input', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_mask_hidden', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_mask_input', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_mask_hidden', type=str, default='')
+
 opt = parser.parse_args()
 IGNORE_INDEX=-1
 use_output_eos = not opt.ignore_output_eos
@@ -192,6 +197,19 @@ else:
     input_vocab = src.vocab
     output_vocab = tgt.vocab
 
+    valid_mask_opts = ['feat', 'elem']
+    encoder_rnn_cell_kwargs = dict(
+        mask_input=opt.encoder_rnn_cell_mask_input
+            if opt.encoder_rnn_cell_mask_input in valid_mask_opts else None,
+        mask_hidden=opt.encoder_rnn_cell_mask_hidden
+            if opt.encoder_rnn_cell_mask_hidden in valid_mask_opts else None)
+
+    decoder_rnn_cell_kwargs = dict(
+        mask_input=opt.decoder_rnn_cell_mask_input
+            if opt.decoder_rnn_cell_mask_input in valid_mask_opts else None,
+        mask_hidden=opt.decoder_rnn_cell_mask_hidden
+            if opt.decoder_rnn_cell_mask_hidden in valid_mask_opts else None)
+
     # Initialize model
     hidden_size = opt.hidden_size
     decoder_hidden_size = hidden_size*2 if opt.bidirectional else hidden_size
@@ -201,7 +219,8 @@ else:
                          n_layers=opt.n_layers,
                          bidirectional=opt.bidirectional,
                          rnn_cell=opt.encoder_cell,
-                         variable_lengths=True)
+                         variable_lengths=True,
+                         **encoder_rnn_cell_kwargs)
     decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
                          dropout_p=opt.dropout_p_decoder,
                          n_layers=opt.n_layers,
@@ -210,9 +229,12 @@ else:
                          full_focus=opt.full_focus,
                          bidirectional=opt.bidirectional,
                          rnn_cell=opt.decoder_cell,
-                         eos_id=tgt.eos_id, sos_id=tgt.sos_id)
+                         eos_id=tgt.eos_id, sos_id=tgt.sos_id,
+                         **decoder_rnn_cell_kwargs)
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
+    print(seq2seq)
+    raise
 
     for param in seq2seq.parameters():
         param.data.uniform_(-0.08, 0.08)

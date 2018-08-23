@@ -64,7 +64,7 @@ class DecoderRNN(BaseRNN):
     def __init__(self, vocab_size, max_len, hidden_size,
             sos_id, eos_id,
             n_layers=1, rnn_cell='gru', bidirectional=False,
-            input_dropout_p=0, dropout_p=0, use_attention=False, attention_method=None, full_focus=False):
+            input_dropout_p=0, dropout_p=0, use_attention=False, attention_method=None, full_focus=False, **rnn_cell_kwargs):
         super(DecoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p,
                 n_layers, rnn_cell)
@@ -82,7 +82,7 @@ class DecoderRNN(BaseRNN):
         if use_attention == 'pre-rnn' and not full_focus:
             input_size*=2
 
-        self.rnn = self.rnn_cell(input_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.rnn = self.rnn_cell(input_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p, **rnn_cell_kwargs)
 
         self.output_size = vocab_size
         self.max_length = max_len
@@ -108,13 +108,13 @@ class DecoderRNN(BaseRNN):
     def forward_step(self, input_var, hidden, encoder_outputs, function, **attention_method_kwargs):
         """
         Performs one or multiple forward decoder steps.
-        
+
         Args:
             input_var (torch.tensor): Variable containing the input(s) to the decoder RNN
             hidden (torch.tensor): Variable containing the previous decoder hidden state.
             encoder_outputs (torch.tensor): Variable containing the target outputs of the decoder RNN
             function (torch.tensor): Activation function over the last output of the decoder RNN at every time step.
-        
+
         Returns:
             predicted_softmax: The output softmax distribution at every time step of the decoder RNN
             hidden: The hidden state at every time step of the decoder RNN
@@ -160,7 +160,7 @@ class DecoderRNN(BaseRNN):
 
         inputs, batch_size, max_length = self._validate_args(inputs, encoder_hidden, encoder_outputs,
                                                              function, teacher_forcing_ratio)
-        
+
         decoder_hidden = self._init_state(encoder_hidden)
 
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
