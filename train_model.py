@@ -203,12 +203,18 @@ else:
         encoder_rnn_cell_kwargs['mask_input'] = opt.encoder_rnn_cell_mask_input
     if opt.encoder_rnn_cell_mask_hidden in valid_mask_opts:
         encoder_rnn_cell_kwargs['mask_hidden'] = opt.encoder_rnn_cell_mask_hidden
+    if len(encoder_rnn_cell_kwargs) > 0:
+        encoder_rnn_cell_kwargs['cell_type'] = opt.encoder_cell
+        opt.encoder_cell = 'masked'
 
     decoder_rnn_cell_kwargs = dict()
     if opt.decoder_rnn_cell_mask_input in valid_mask_opts:
         decoder_rnn_cell_kwargs['mask_input'] = opt.decoder_rnn_cell_mask_input
     if opt.decoder_rnn_cell_mask_hidden in valid_mask_opts:
         decoder_rnn_cell_kwargs['mask_hidden'] = opt.decoder_rnn_cell_mask_hidden
+    if len(decoder_rnn_cell_kwargs) > 0:
+        decoder_rnn_cell_kwargs['cell_type'] = opt.decoder_cell
+        opt.decoder_cell = 'masked'
 
     # Initialize model
     hidden_size = opt.hidden_size
