@@ -66,7 +66,7 @@ class MaskedLinear(nn.Module):
 
 class MaskedRNN(nn.Module):
     """
-    Applies LSTM to a sequence with masked parameter access.
+    Applies RNN to a sequence with masked parameter access.
 
     Args:
         input_size (int): feature size of the input (e.g. embedding size)
@@ -77,6 +77,9 @@ class MaskedRNN(nn.Module):
             if True, becomes a bidirectional encoder (default False)
         dropout (float, optional):
             dropout probability for the output sequence (default: 0)
+        cell_type (string, optional):
+            Either 'srn' for simple recurrent NN, 'gru' for gated recurrent NN
+            or 'lstm' for long short term memory NN (default 'lstm')
         mask_input (string, optional):
             Either 'feat' for feature-wise or 'elem' for element masking of the
             input gate parameters. Else vanilla linear transformations are
