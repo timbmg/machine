@@ -40,6 +40,8 @@ class BaseRNN(nn.Module):
             self.rnn_cell = nn.LSTM
         elif rnn_cell.lower() == 'gru':
             self.rnn_cell = nn.GRU
+        elif rnn_cell.lower() in ['rnn', 'srn']:
+            self.rnn_cell = nn.RNN
         elif rnn_cell.lower() == 'masked_lstm':
             self.rnn_cell = MaskedLSTM
         else:
