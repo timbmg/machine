@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-from seq2seq.models.MaskedLSTM import MaskedLinear
+from seq2seq.models.MaskedRNN import MaskedLinear
 
 
 class TestMaskedLinear(unittest.TestCase):
