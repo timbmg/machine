@@ -103,7 +103,7 @@ class TestMaskedRNN(unittest.TestCase):
 
         hx = torch.FloatTensor(1, 4, 5)
         masked_gru = MaskedRNN(10, 5, 1,
-                                cell_type='gru',
-                                mask_input='feat',
-                                mask_hidden='elem')
+                               cell_type='gru',
+                               mask_input='feat',
+                               mask_hidden='elem')
         y, hx = masked_gru(x, hx)
