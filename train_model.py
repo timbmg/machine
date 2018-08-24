@@ -198,17 +198,17 @@ else:
     output_vocab = tgt.vocab
 
     valid_mask_opts = ['feat', 'elem']
-    encoder_rnn_cell_kwargs = dict(
-        mask_input=opt.encoder_rnn_cell_mask_input
-            if opt.encoder_rnn_cell_mask_input in valid_mask_opts else None,
-        mask_hidden=opt.encoder_rnn_cell_mask_hidden
-            if opt.encoder_rnn_cell_mask_hidden in valid_mask_opts else None)
+    encoder_rnn_cell_kwargs = dict()
+    if opt.encoder_rnn_cell_mask_input in valid_mask_opts:
+        encoder_rnn_cell_kwargs['mask_input'] = opt.encoder_rnn_cell_mask_input
+    if opt.encoder_rnn_cell_mask_hidden in valid_mask_opts:
+        encoder_rnn_cell_kwargs['mask_hidden'] = opt.encoder_rnn_cell_mask_hidden
 
-    decoder_rnn_cell_kwargs = dict(
-        mask_input=opt.decoder_rnn_cell_mask_input
-            if opt.decoder_rnn_cell_mask_input in valid_mask_opts else None,
-        mask_hidden=opt.decoder_rnn_cell_mask_hidden
-            if opt.decoder_rnn_cell_mask_hidden in valid_mask_opts else None)
+    decoder_rnn_cell_kwargs = dict()
+    if opt.decoder_rnn_cell_mask_input in valid_mask_opts:
+        decoder_rnn_cell_kwargs['mask_input'] = opt.decoder_rnn_cell_mask_input
+    if opt.decoder_rnn_cell_mask_hidden in valid_mask_opts:
+        decoder_rnn_cell_kwargs['mask_hidden'] = opt.decoder_rnn_cell_mask_hidden
 
     # Initialize model
     hidden_size = opt.hidden_size
@@ -233,8 +233,6 @@ else:
                          **decoder_rnn_cell_kwargs)
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
-    print(seq2seq)
-    raise
 
     for param in seq2seq.parameters():
         param.data.uniform_(-0.08, 0.08)
