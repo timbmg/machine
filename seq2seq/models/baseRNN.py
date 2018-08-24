@@ -1,7 +1,7 @@
 """ A base class for RNN. """
 import torch.nn as nn
 
-from .MaskedLSTM import MaskedLSTM
+from .MaskedRNN import MaskedRNN
 
 class BaseRNN(nn.Module):
     r"""
@@ -40,10 +40,10 @@ class BaseRNN(nn.Module):
             self.rnn_cell = nn.LSTM
         elif rnn_cell.lower() == 'gru':
             self.rnn_cell = nn.GRU
-        elif rnn_cell.lower() in ['rnn', 'srn']:
+        elif rnn_cell.lower() == 'srn':
             self.rnn_cell = nn.RNN
-        elif rnn_cell.lower() == 'masked_lstm':
-            self.rnn_cell = MaskedLSTM
+        elif rnn_cell.lower() == 'masked':
+            self.rnn_cell = MaskedRNN
         else:
             raise ValueError("Unsupported RNN Cell: {0}".format(rnn_cell))
 
