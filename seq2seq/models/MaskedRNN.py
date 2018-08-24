@@ -174,6 +174,28 @@ class MaskedRNN(nn.Module):
 
 
 class RecurrentCell(nn.Module):
+    """
+    Implements different recurrent cells.
+
+    Args:
+        cell (str):
+            Either 'srn' for simple recurrent NN, 'gru' for gated recurrent NN
+            or 'lstm' for long short term memory NN (default 'lstm')
+        input_size (int): feature size of the input (e.g. embedding size)
+        hidden_size (int): the number of features in the hidden state `h`
+        mask_input (string, optional):
+            Either 'feat' for feature-wise or 'elem' for element masking of the
+            input gate parameters. Else vanilla linear transformations are
+            used. (default 'feat')
+        mask_hidden (string, optional):
+            Either 'feat' for feature-wise or 'elem'for element masking of the
+            hidden gate parameters. Else vanilla linear transformations are
+            used. (default 'feat')
+        n_layers (int, optional): (default: 1)
+        batch_first (bool, optional): (default: True)
+        bidirectional (bool, optional):
+            if True, becomes a bidirectional encoder (default: False)
+    """
 
     def __init__(self, cell, input_size, hidden_size, mask_input, mask_hidden,
                  n_layers=1, batch_first=True, bidirectional=False):
