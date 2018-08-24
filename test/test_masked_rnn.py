@@ -30,7 +30,7 @@ class TestMaskedRNN(unittest.TestCase):
             MaskedRNN(10, 5, 1,
                       cell_type='srn',
                       mask_input='feat',
-                      mask_hidden='not-a-mask-input')
+                      mask_hidden='not-a-mask-hidden')
 
     def test_mask_wise(self):
 
