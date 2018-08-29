@@ -278,8 +278,8 @@ class MaskedLinear(nn.Module):
     Args:
         in_features (int):
         out_features (int):
-        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise
-            masking of the parameters.
+        wise (str): Either 'feat' for feature-wise or 'input' for input-wise or
+            'elem' for element-wise masking of the parameters.
     Inputs: input
         - **input**: torch.FloatTensor of size N*, in_features
     Outputs: output
