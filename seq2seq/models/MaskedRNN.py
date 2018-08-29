@@ -224,7 +224,7 @@ class RecurrentCell(nn.Module):
         output = list()
         for si in range(sequence_size):
 
-            hx = self.forward_step_fn(input[:, si].unsqueeze(1), hx)
+            hx = self.forward_step_fn(x=input[:, si].unsqueeze(1), hx=hx)
 
             if self.cell == 'lstm':
                 output.append(hx[0])
@@ -280,6 +280,8 @@ class MaskedLinear(nn.Module):
         out_features (int):
         wise (str): Either 'feat' for feature-wise or 'input' for input-wise or
             'elem' for element-wise masking of the parameters.
+        mask_in_features (int, optional): Number of input dimensions of the
+            masking matrix.
     Inputs: input
         - **input**: torch.FloatTensor of size N*, in_features
     Outputs: output
@@ -291,31 +293,39 @@ class MaskedLinear(nn.Module):
 
     """
 
-    def __init__(self, in_features, out_features, wise):
+    def __init__(self, in_features, out_features, wise,
+                 mask_in_features=None):
 
         super(MaskedLinear, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
         self.wise = wise
+        if mask_in_features is None:
+            self.mask_in_features = in_features
+        else:
+            self.mask_in_features = mask_in_features
 
         if wise == 'feat':
-            mask_out_features = out_features
+            self.mask_out_features = out_features
         elif wise == 'input':
-            mask_out_features = in_features
+            self.mask_out_features = in_features
         elif wise == 'elem':
-            mask_out_features = out_features * in_features
+            self.mask_out_features = out_features * in_features
         else:
-            raise ValueError("{}-wise masking not supported. Chose from " +
-                             "{}, {} or {}.".format(wise, *MASK_TYPES))
+            raise ValueError("{}-wise masking not supported. Chose from {}."
+                             .format(wise, ', '.join(MASK_TYPES)))
 
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
         self.W_mask = nn.Parameter(
-            torch.Tensor(mask_out_features, in_features))
+            torch.Tensor(self.mask_out_features, self.mask_in_features))
 
-    def forward(self, input):
+    def forward(self, input, mask_input=None):
 
-        mask = F.sigmoid(F.linear(input, self.W_mask))
+        if mask_input is None:
+            mask_input = input
+
+        mask = F.sigmoid(F.linear(mask_input, self.W_mask))
 
         if self.wise == 'feat':
             output = mask * F.linear(input, self.W)
@@ -333,5 +343,10 @@ class MaskedLinear(nn.Module):
         return output
 
     def __repr__(self):
-        return "MaskedLinear(in_features=%i, out_features=%i, wise=%s)"\
-               % (self.in_features, self.out_features, self.wise)
+        return "MaskedLinear(in_features={}, out_features={}, wise={}, " + \
+               "mask_in_features={}, mask_out_features={})"\
+               .format(self.in_features,
+                       self.out_features,
+                       self.wise,
+                       self.mask_in_features,
+                       self.mask_out_features)
