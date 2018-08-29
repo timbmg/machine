@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 import math
 
+MASK_TYPES = ['feat', 'input', 'elem']
+CELL_TYPES = ['srn', 'gru', 'lstm']
+
 
 class MaskedLinear(nn.Module):
     """Implements a linear transformation with masked parameter access.
@@ -33,15 +36,18 @@ class MaskedLinear(nn.Module):
         self.wise = wise
 
         if wise == 'feat':
-            masks_per_feature = 1
+            mask_out_features = out_features
+        elif wise == 'input':
+            mask_out_features = in_features
         elif wise == 'elem':
-            masks_per_feature = in_features
+            mask_out_features = out_features * in_features
         else:
-            raise ValueError()
+            raise ValueError("{}-wise masking not supported. Chose from " +
+                             "{}, {} or {}.".format(wise, *MASK_TYPES))
 
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
         self.W_mask = nn.Parameter(
-            torch.Tensor(out_features*masks_per_feature, in_features))
+            torch.Tensor(mask_out_features, in_features))
 
     def forward(self, input):
 
@@ -49,6 +55,9 @@ class MaskedLinear(nn.Module):
 
         if self.wise == 'feat':
             output = mask * F.linear(input, self.W)
+
+        elif self.wise == 'input':
+            output = F.linear(mask * input, self.W)
 
         elif self.wise == 'elem':
             # TODO: This only works for 3D input right now
@@ -81,13 +90,13 @@ class MaskedRNN(nn.Module):
             Either 'srn' for simple recurrent NN, 'gru' for gated recurrent NN
             or 'lstm' for long short term memory NN (default 'lstm')
         mask_input (string, optional):
-            Either 'feat' for feature-wise or 'elem' for element masking of the
-            input gate parameters. Else vanilla linear transformations are
-            used. (default 'feat')
+            Either 'feat' for feature-wise or 'input' for input-wise or 'elem'
+            for element-wise masking of the input gate parameters. Else vanilla
+            linear transformations are used. (default 'feat')
         mask_hidden (string, optional):
-            Either 'feat' for feature-wise or 'elem'for element masking of the
-            hidden gate parameters. Else vanilla linear transformations are
-            used. (default 'feat')
+            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+            for element-wise masking of the hidden gate parameters. Else
+            vanilla linear transformations are used. (default 'feat')
 
     Inputs: input, hx
         - **input** (batch, seq_len):
@@ -127,7 +136,7 @@ class MaskedRNN(nn.Module):
         if dropout > 0:
             raise NotImplementedError()
 
-        if cell_type not in ['srn', 'gru', 'lstm']:
+        if cell_type not in CELL_TYPES:
             raise ValueError("{} not supported.".format(cell_type))
 
         self.hidden_size = hidden_size
@@ -184,13 +193,13 @@ class RecurrentCell(nn.Module):
         input_size (int): feature size of the input (e.g. embedding size)
         hidden_size (int): the number of features in the hidden state `h`
         mask_input (string, optional):
-            Either 'feat' for feature-wise or 'elem' for element masking of the
-            input gate parameters. Else vanilla linear transformations are
-            used. (default 'feat')
+            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+            for element masking of the input gate parameters. Else vanilla
+            linear transformations are used. (default 'feat')
         mask_hidden (string, optional):
-            Either 'feat' for feature-wise or 'elem'for element masking of the
-            hidden gate parameters. Else vanilla linear transformations are
-            used. (default 'feat')
+            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+            for element masking of the hidden gate parameters. Else vanilla
+            linear transformations are used. (default 'feat')
         n_layers (int, optional): (default: 1)
         batch_first (bool, optional): (default: True)
         bidirectional (bool, optional):
@@ -207,14 +216,14 @@ class RecurrentCell(nn.Module):
         self.n_layers = n_layers
         self.batch_first = batch_first
 
-        if mask_input in ['feat', 'elem']:
+        if mask_input in MASK_TYPES:
             input_args = input_size, hidden_size, mask_input
             input_linear = MaskedLinear
         else:
             input_args = input_size, hidden_size
             input_linear = nn.Linear
 
-        if mask_hidden in ['feat', 'elem']:
+        if mask_hidden in MASK_TYPES:
             hidden_args = hidden_size, hidden_size, mask_hidden
             hidden_linear = MaskedLinear
         else:
