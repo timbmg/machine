@@ -8,71 +8,6 @@ MASK_TYPES = ['feat', 'input', 'elem']
 CELL_TYPES = ['srn', 'gru', 'lstm']
 
 
-class MaskedLinear(nn.Module):
-    """Implements a linear transformation with masked parameter access.
-
-    Args:
-        in_features (int):
-        out_features (int):
-        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise
-            masking of the parameters.
-    Inputs: input
-        - **input**: torch.FloatTensor of size N*, in_features
-    Outputs: output
-        - **output**: torch.FloatTensor of size N*, out_features
-    Examples:
-        >> ml = MaskedLinear(10, 5, 'feat')
-        >> x = torch.FloatTensor(4, 10)
-        >> y = ml(x) # [4, 5]
-
-    """
-
-    def __init__(self, in_features, out_features, wise):
-
-        super(MaskedLinear, self).__init__()
-
-        self.in_features = in_features
-        self.out_features = out_features
-        self.wise = wise
-
-        if wise == 'feat':
-            mask_out_features = out_features
-        elif wise == 'input':
-            mask_out_features = in_features
-        elif wise == 'elem':
-            mask_out_features = out_features * in_features
-        else:
-            raise ValueError("{}-wise masking not supported. Chose from " +
-                             "{}, {} or {}.".format(wise, *MASK_TYPES))
-
-        self.W = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.W_mask = nn.Parameter(
-            torch.Tensor(mask_out_features, in_features))
-
-    def forward(self, input):
-
-        mask = F.sigmoid(F.linear(input, self.W_mask))
-
-        if self.wise == 'feat':
-            output = mask * F.linear(input, self.W)
-
-        elif self.wise == 'input':
-            output = F.linear(mask * input, self.W)
-
-        elif self.wise == 'elem':
-            # TODO: This only works for 3D input right now
-            mask = mask.view(-1, self.out_features, self.in_features)
-            masked_weight = \
-                mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
-            output = torch.bmm(input, masked_weight.transpose(1, 2))
-
-        return output
-
-    def __repr__(self):
-        return "MaskedLinear(in_features=%i, out_features=%i, wise=%s)"\
-               % (self.in_features, self.out_features, self.wise)
-
-
 class MaskedRNN(nn.Module):
     """
     Applies RNN to a sequence with masked parameter access.
@@ -335,3 +270,68 @@ class RecurrentCell(nn.Module):
         h = o * c
 
         return (h, c)
+
+
+class MaskedLinear(nn.Module):
+    """Implements a linear transformation with masked parameter access.
+
+    Args:
+        in_features (int):
+        out_features (int):
+        wise (str): Either 'feat' for feature-wise or 'elem' for element-wise
+            masking of the parameters.
+    Inputs: input
+        - **input**: torch.FloatTensor of size N*, in_features
+    Outputs: output
+        - **output**: torch.FloatTensor of size N*, out_features
+    Examples:
+        >> ml = MaskedLinear(10, 5, 'feat')
+        >> x = torch.FloatTensor(4, 10)
+        >> y = ml(x) # [4, 5]
+
+    """
+
+    def __init__(self, in_features, out_features, wise):
+
+        super(MaskedLinear, self).__init__()
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.wise = wise
+
+        if wise == 'feat':
+            mask_out_features = out_features
+        elif wise == 'input':
+            mask_out_features = in_features
+        elif wise == 'elem':
+            mask_out_features = out_features * in_features
+        else:
+            raise ValueError("{}-wise masking not supported. Chose from " +
+                             "{}, {} or {}.".format(wise, *MASK_TYPES))
+
+        self.W = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.W_mask = nn.Parameter(
+            torch.Tensor(mask_out_features, in_features))
+
+    def forward(self, input):
+
+        mask = F.sigmoid(F.linear(input, self.W_mask))
+
+        if self.wise == 'feat':
+            output = mask * F.linear(input, self.W)
+
+        elif self.wise == 'input':
+            output = F.linear(mask * input, self.W)
+
+        elif self.wise == 'elem':
+            # TODO: This only works for 3D input right now
+            mask = mask.view(-1, self.out_features, self.in_features)
+            masked_weight = \
+                mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
+            output = torch.bmm(input, masked_weight.transpose(1, 2))
+
+        return output
+
+    def __repr__(self):
+        return "MaskedLinear(in_features=%i, out_features=%i, wise=%s)"\
+               % (self.in_features, self.out_features, self.wise)
