@@ -4,8 +4,9 @@ import torch.nn.functional as F
 
 import math
 
-MASK_TYPES = ['feat', 'input', 'elem']
+MASK_TYPES = ['no_mask', 'feat', 'input', 'elem']
 CELL_TYPES = ['srn', 'gru', 'lstm']
+CONDITIONS = ['x', 'h', 'x_h']
 
 
 class MaskedRNN(nn.Module):
@@ -24,14 +25,18 @@ class MaskedRNN(nn.Module):
         cell_type (string, optional):
             Either 'srn' for simple recurrent NN, 'gru' for gated recurrent NN
             or 'lstm' for long short term memory NN (default 'lstm')
-        mask_input (string, optional):
-            Either 'feat' for feature-wise or 'input' for input-wise or 'elem'
+        mask_type (string, optional):
+            Either 'no_mask' for default Linear function or 'feat' for feature-wise or 'input' for input-wise or 'elem'
             for element-wise masking of the input gate parameters. Else vanilla
             linear transformations are used. (default 'feat')
-        mask_hidden (string, optional):
-            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+        mask_type_hidden (string, optional):
+            Either 'no_mask' for default Linear function or 'feat' for feature-wise or or 'input' for input-wise 'elem'
             for element-wise masking of the hidden gate parameters. Else
             vanilla linear transformations are used. (default 'feat')
+        mask_condition_input (string, optional):
+            Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to condtion on both. Applied to input layer.
+        mask_condition_hidden (string, optional):
+            Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to condtion on both. Applied to recurrent layer.
 
     Inputs: input, hx
         - **input** (batch, seq_len):
@@ -55,7 +60,8 @@ class MaskedRNN(nn.Module):
 
     def __init__(self, input_size, hidden_size, n_layers=1,
                  batch_first=True, bidirectional=False, dropout=0,
-                 cell_type='lstm', mask_input='feat', mask_hidden='feat'):
+                 cell_type='lstm', mask_type_input='feat', mask_type_hidden='feat',
+                 mask_condition_input='x', mask_condition_hidden='h'):
 
         super(MaskedRNN, self).__init__()
 
@@ -72,7 +78,12 @@ class MaskedRNN(nn.Module):
             raise NotImplementedError()
 
         if cell_type not in CELL_TYPES:
-            raise ValueError("{} not supported.".format(cell_type))
+            raise ValueError("{} cell not supported.".format(cell_type))
+
+        if mask_condition_input not in CONDITIONS:
+            raise ValueError("{} condition not supported.".format(mask_condition_input))
+        if mask_condition_hidden not in CONDITIONS:
+            raise ValueError("{} condition not supported.".format(mask_condition_hidden))
 
         self.hidden_size = hidden_size
         self.batch_first = batch_first
@@ -82,8 +93,10 @@ class MaskedRNN(nn.Module):
             cell=cell_type,
             input_size=input_size,
             hidden_size=hidden_size,
-            mask_input=mask_input,
-            mask_hidden=mask_hidden,
+            mask_type_input=mask_type_input,
+            mask_type_hidden=mask_type_hidden,
+            mask_condition_input=mask_condition_input,
+            mask_condition_hidden=mask_condition_hidden,
             n_layers=n_layers,
             batch_first=self.batch_first,
             bidirectional=bidirectional)
@@ -127,21 +140,26 @@ class RecurrentCell(nn.Module):
             or 'lstm' for long short term memory NN (default 'lstm')
         input_size (int): feature size of the input (e.g. embedding size)
         hidden_size (int): the number of features in the hidden state `h`
-        mask_input (string, optional):
-            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+        mask_type_input (string, optional):
+            Either 'no_mask' for default Linear function or  'feat' for feature-wise or or 'input' for input-wise 'elem'
             for element masking of the input gate parameters. Else vanilla
             linear transformations are used. (default 'feat')
-        mask_hidden (string, optional):
-            Either 'feat' for feature-wise or or 'input' for input-wise 'elem'
+        mask_type_hidden (string, optional):
+            Either 'no_mask' for default Linear function or  'feat' for feature-wise or or 'input' for input-wise 'elem'
             for element masking of the hidden gate parameters. Else vanilla
             linear transformations are used. (default 'feat')
+        mask_condition_input (string, optional):
+            Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to condtion on both. Applied to input layer.
+        mask_condition_hidden (string, optional):
+            Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to condtion on both. Applied to recurrent layer.
+
         n_layers (int, optional): (default: 1)
         batch_first (bool, optional): (default: True)
         bidirectional (bool, optional):
             if True, becomes a bidirectional encoder (default: False)
     """
 
-    def __init__(self, cell, input_size, hidden_size, mask_input, mask_hidden,
+    def __init__(self, cell, input_size, hidden_size, mask_type_input, mask_type_hidden, mask_condition_input, mask_condition_hidden,
                  n_layers=1, batch_first=True, bidirectional=False):
 
         super(RecurrentCell, self).__init__()
@@ -151,35 +169,42 @@ class RecurrentCell(nn.Module):
         self.n_layers = n_layers
         self.batch_first = batch_first
 
-        if mask_input in MASK_TYPES:
-            input_args = input_size, hidden_size, mask_input
-            input_linear = MaskedLinear
-        else:
-            input_args = input_size, hidden_size
-            input_linear = nn.Linear
+        self.mask_condition_input = mask_condition_input
+        self.mask_condition_hidden = mask_condition_hidden
 
-        if mask_hidden in MASK_TYPES:
-            hidden_args = hidden_size, hidden_size, mask_hidden
-            hidden_linear = MaskedLinear
-        else:
-            hidden_args = hidden_size, hidden_size
-            hidden_linear = nn.Linear
+        mask_in_features_input, mask_in_features_hidden = 0, 0
+        if 'x' in mask_condition_input:
+            mask_in_features_input += input_size
+        if 'h' in mask_condition_input:
+            mask_in_features_input += hidden_size
+        if mask_in_features_input == 0 and len(mask_condition_input) > 0:
+            raise RuntimeError()
+
+        if 'x' in mask_condition_hidden:
+            mask_in_features_hidden += input_size
+        if 'h' in mask_condition_hidden:
+            mask_in_features_hidden += hidden_size
+        if mask_in_features_hidden == 0 and len(mask_condition_hidden) > 0:
+            raise RuntimeError()
+
+        input_args = input_size, hidden_size, mask_type_input, mask_in_features_input
+        hidden_args = hidden_size, hidden_size, mask_type_hidden, mask_in_features_hidden
 
         if self.cell == 'srn':
-            self.W = input_linear(*input_args)
-            self.U = hidden_linear(*hidden_args)
+            self.W = MaskedLinear(*input_args)
+            self.U = MaskedLinear(*hidden_args)
             self.b = nn.Parameter(torch.Tensor(hidden_size))
 
             self.forward_step_fn = self._rnn_forward_step
 
         elif self.cell == 'gru':
-            self.W_r = input_linear(*input_args)
-            self.W_z = input_linear(*input_args)
-            self.W_h = input_linear(*input_args)
+            self.W_r = MaskedLinear(*input_args)
+            self.W_z = MaskedLinear(*input_args)
+            self.W_h = MaskedLinear(*input_args)
 
-            self.U_r = hidden_linear(*hidden_args)
-            self.U_z = hidden_linear(*hidden_args)
-            self.U_h = hidden_linear(*hidden_args)
+            self.U_r = MaskedLinear(*hidden_args)
+            self.U_z = MaskedLinear(*hidden_args)
+            self.U_h = MaskedLinear(*hidden_args)
 
             self.b_r = nn.Parameter(torch.Tensor(hidden_size))
             self.b_z = nn.Parameter(torch.Tensor(hidden_size))
@@ -188,15 +213,15 @@ class RecurrentCell(nn.Module):
             self.forward_step_fn = self._gru_forward_step
 
         elif self.cell == 'lstm':
-            self.W_f = input_linear(*input_args)
-            self.W_i = input_linear(*input_args)
-            self.W_o = input_linear(*input_args)
-            self.W_c = input_linear(*input_args)
+            self.W_f = MaskedLinear(*input_args)
+            self.W_i = MaskedLinear(*input_args)
+            self.W_o = MaskedLinear(*input_args)
+            self.W_c = MaskedLinear(*input_args)
 
-            self.U_f = hidden_linear(*hidden_args)
-            self.U_i = hidden_linear(*hidden_args)
-            self.U_o = hidden_linear(*hidden_args)
-            self.U_c = hidden_linear(*hidden_args)
+            self.U_f = MaskedLinear(*hidden_args)
+            self.U_i = MaskedLinear(*hidden_args)
+            self.U_o = MaskedLinear(*hidden_args)
+            self.U_c = MaskedLinear(*hidden_args)
 
             self.b_f = nn.Parameter(torch.Tensor(hidden_size))
             self.b_i = nn.Parameter(torch.Tensor(hidden_size))
@@ -224,7 +249,23 @@ class RecurrentCell(nn.Module):
         output = list()
         for si in range(sequence_size):
 
-            hx = self.forward_step_fn(x=input[:, si].unsqueeze(1), hx=hx)
+            x = input[:, si].unsqueeze(1)
+
+            if self.mask_condition_input == 'x':
+                mask_input = x.clone() # NOTE: clone?
+            elif self.mask_condition_input == 'h':
+                mask_input = hx[0].clone() if self.cell == 'lstm' else hx
+            elif self.mask_condition_input == 'x_h':
+                mask_input = torch.cat([x.clone(), hx.clone()], dim=-1)
+
+            if self.mask_condition_hidden == 'h':
+                mask_hidden_input = hx[0].clone() if self.cell == 'lstm' else hx
+            elif self.mask_condition_hidden == 'x':
+                mask_hidden_input = x.clone()
+            elif self.mask_condition_hidden == 'x_h':
+                mask_hidden_input = torch.cat([x.clone(), hx.clone()], dim=-1)
+
+            hx = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
 
             if self.cell == 'lstm':
                 output.append(hx[0])
@@ -250,22 +291,24 @@ class RecurrentCell(nn.Module):
         else:
             return hx
 
-    def _rnn_forward_step(self, x, hx):
-        hx = F.tanh(self.W(x) + self.U(hx) + self.b)
+    def _rnn_forward_step(self, x, hx, mask_input, mask_hidden_input):
+        hx = F.tanh(self.W(x, mask_input) + self.U(hx, mask_hidden_input) + self.b)
+
         return hx
 
-    def _gru_forward_step(self, x, hx):
-        r = F.sigmoid(self.W_r(x) + self.U_r(hx) + self.b_r)
-        z = F.sigmoid(self.W_z(x) + self.U_z(hx) + self.b_z)
-        hx = z * hx + (1-z) * F.tanh(self.W_h(x) + self.U_h(r * hx) + self.b_h)
+    def _gru_forward_step(self, x, hx, mask_input, mask_hidden_input):
+        r = F.sigmoid(self.W_r(x, mask_input) + self.U_r(hx, mask_hidden_input) + self.b_r)
+        z = F.sigmoid(self.W_z(x, mask_input) + self.U_z(hx, mask_hidden_input) + self.b_z)
+        # NOTE: masked_hidden_input should be redefined with r*hx hidden state
+        hx = z * hx + (1-z) * F.tanh(self.W_h(x, mask_input) + self.U_h((r * hx), mask_hidden_input) + self.b_h)
         return hx
 
-    def _lstm_forward_step(self, x, hx):
+    def _lstm_forward_step(self, x, hx, mask_input, mask_hidden_input):
         h, c = hx
-        f = F.sigmoid(self.W_f(x) + self.U_f(h) + self.b_f)
-        i = F.sigmoid(self.W_i(x) + self.U_i(h) + self.b_i)
-        o = F.sigmoid(self.W_o(x) + self.U_o(h) + self.b_o)
-        c = F.tanh(self.W_c(x) + self.U_c(h) + self.b_c) * i \
+        f = F.sigmoid(self.W_f(x, mask_input) + self.U_f(h, mask_hidden_input) + self.b_f)
+        i = F.sigmoid(self.W_i(x, mask_input) + self.U_i(h, mask_hidden_input) + self.b_i)
+        o = F.sigmoid(self.W_o(x, mask_input) + self.U_o(h, mask_hidden_input) + self.b_o)
+        c = F.tanh(self.W_c(x, mask_input) + self.U_c(h, mask_hidden_input) + self.b_c) * i \
             + f * c
         h = o * c
 
@@ -278,7 +321,8 @@ class MaskedLinear(nn.Module):
     Args:
         in_features (int):
         out_features (int):
-        wise (str): Either 'feat' for feature-wise or 'input' for input-wise or
+        wise (str):
+            Either 'no_mask' for default Linear function or 'feat' for feature-wise or 'input' for input-wise or
             'elem' for element-wise masking of the parameters.
         mask_in_features (int, optional): Number of input dimensions of the
             masking matrix.
@@ -306,7 +350,9 @@ class MaskedLinear(nn.Module):
         else:
             self.mask_in_features = mask_in_features
 
-        if wise == 'feat':
+        if wise == 'no_mask':
+            pass
+        elif wise == 'feat':
             self.mask_out_features = out_features
         elif wise == 'input':
             self.mask_out_features = in_features
@@ -317,28 +363,38 @@ class MaskedLinear(nn.Module):
                              .format(wise, ', '.join(MASK_TYPES)))
 
         self.W = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.W_mask = nn.Parameter(
-            torch.Tensor(self.mask_out_features, self.mask_in_features))
+
+        if wise != 'no_mask':
+            self.W_mask = nn.Parameter(
+                torch.Tensor(self.mask_out_features, self.mask_in_features))
 
     def forward(self, input, mask_input=None):
 
-        if mask_input is None:
-            mask_input = input
+        if self.wise == 'no_mask':
+            output = F.linear(input, self.W)
+        else:
+            if mask_input is None:
+                mask_input = input
 
-        mask = F.sigmoid(F.linear(mask_input, self.W_mask))
+            mask = F.sigmoid(F.linear(mask_input, self.W_mask))
 
-        if self.wise == 'feat':
-            output = mask * F.linear(input, self.W)
+            if self.wise == 'feat':
+                output = mask * F.linear(input, self.W)
 
-        elif self.wise == 'input':
-            output = F.linear(mask * input, self.W)
+            elif self.wise == 'input':
+                if self.training == False:
+                    print("mean", torch.mean(mask.view(-1)))
+                    print("std", torch.std(mask.view(-1)))
+                    print("norm", torch.norm(mask))
+                    
+                output = F.linear(mask * input, self.W)
 
-        elif self.wise == 'elem':
-            # TODO: This only works for 3D input right now
-            mask = mask.view(-1, self.out_features, self.in_features)
-            masked_weight = \
-                mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
-            output = torch.bmm(input, masked_weight.transpose(1, 2))
+            elif self.wise == 'elem':
+                # TODO: This only works for 3D input right now
+                mask = mask.view(-1, self.out_features, self.in_features)
+                masked_weight = \
+                    mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
+                output = torch.bmm(input, masked_weight.transpose(1, 2))
 
         return output
 

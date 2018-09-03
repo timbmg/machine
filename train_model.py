@@ -66,10 +66,15 @@ parser.add_argument('--log-level', default='info', help='Logging level.')
 parser.add_argument('--write-logs', help='Specify file to write logs to after training')
 parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device to use')
 
-parser.add_argument('--encoder_rnn_cell_mask_input', type=str, default='')
-parser.add_argument('--encoder_rnn_cell_mask_hidden', type=str, default='')
-parser.add_argument('--decoder_rnn_cell_mask_input', type=str, default='')
-parser.add_argument('--decoder_rnn_cell_mask_hidden', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_mask_type_input', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_mask_type_hidden', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_mask_condition_input', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_mask_condition_hidden', type=str, default='')
+
+parser.add_argument('--decoder_rnn_cell_mask_type_input', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_mask_type_hidden', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_mask_condition_input', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_mask_condition_hidden', type=str, default='')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -197,21 +202,31 @@ else:
     input_vocab = src.vocab
     output_vocab = tgt.vocab
 
-    valid_mask_opts = ['feat', 'elem']
+    valid_mask_opts = ['no_mask', 'feat', 'elem', 'input']
+    valid_mask_condition_opts = ['x', 'h', 'x_h']
     encoder_rnn_cell_kwargs = dict()
-    if opt.encoder_rnn_cell_mask_input in valid_mask_opts:
-        encoder_rnn_cell_kwargs['mask_input'] = opt.encoder_rnn_cell_mask_input
-    if opt.encoder_rnn_cell_mask_hidden in valid_mask_opts:
-        encoder_rnn_cell_kwargs['mask_hidden'] = opt.encoder_rnn_cell_mask_hidden
+    if opt.encoder_rnn_cell_mask_type_input in valid_mask_opts:
+        encoder_rnn_cell_kwargs['mask_type_input'] = opt.encoder_rnn_cell_mask_type_input
+    if opt.encoder_rnn_cell_mask_type_hidden in valid_mask_opts:
+        encoder_rnn_cell_kwargs['mask_type_hidden'] = opt.encoder_rnn_cell_mask_type_hidden
+    if opt.encoder_rnn_cell_mask_condition_input in valid_mask_condition_opts:
+        encoder_rnn_cell_kwargs['mask_condition_input'] = opt.encoder_rnn_cell_mask_condition_input
+    if opt.encoder_rnn_cell_mask_condition_hidden in valid_mask_condition_opts:
+        encoder_rnn_cell_kwargs['mask_condition_hidden'] = opt.encoder_rnn_cell_mask_condition_hidden
+
     if len(encoder_rnn_cell_kwargs) > 0:
         encoder_rnn_cell_kwargs['cell_type'] = opt.encoder_cell
         opt.encoder_cell = 'masked'
 
     decoder_rnn_cell_kwargs = dict()
-    if opt.decoder_rnn_cell_mask_input in valid_mask_opts:
-        decoder_rnn_cell_kwargs['mask_input'] = opt.decoder_rnn_cell_mask_input
-    if opt.decoder_rnn_cell_mask_hidden in valid_mask_opts:
-        decoder_rnn_cell_kwargs['mask_hidden'] = opt.decoder_rnn_cell_mask_hidden
+    if opt.decoder_rnn_cell_mask_type_input in valid_mask_opts:
+        decoder_rnn_cell_kwargs['mask_type_input'] = opt.decoder_rnn_cell_mask_type_input
+    if opt.decoder_rnn_cell_mask_type_hidden in valid_mask_opts:
+        decoder_rnn_cell_kwargs['mask_type_hidden'] = opt.decoder_rnn_cell_mask_type_hidden
+    if opt.decoder_rnn_cell_mask_condition_input in valid_mask_condition_opts:
+        decoder_rnn_cell_kwargs['mask_condition_input'] = opt.decoder_rnn_cell_mask_condition_input
+    if opt.decoder_rnn_cell_mask_condition_hidden in valid_mask_condition_opts:
+        decoder_rnn_cell_kwargs['mask_condition_hidden'] = opt.decoder_rnn_cell_mask_condition_hidden
     if len(decoder_rnn_cell_kwargs) > 0:
         decoder_rnn_cell_kwargs['cell_type'] = opt.decoder_cell
         opt.decoder_cell = 'masked'
