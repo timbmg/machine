@@ -1,8 +1,8 @@
 import unittest
 
 import torch
-from seq2seq.models.MaskedRNN import MaskedRNN, MASK_TYPES, CELL_TYPES, CONDITIONS
-from seq2seq.models.MaskedRNN import MaskedLinear
+from seq2seq.models.MaskedRNN import \
+    MaskedRNN, MASK_TYPES, CELL_TYPES, CONDITIONS
 
 
 class TestMaskedRNN(unittest.TestCase):
@@ -34,38 +34,6 @@ class TestMaskedRNN(unittest.TestCase):
                       cell_type='srn',
                       mask_type_input='feat',
                       mask_type_hidden='not-a-mask-hidden')
-
-    def test_mask_types(self):
-        """
-        masked_lstm = MaskedRNN(10, 5, 1,
-                                cell_type='lstm',
-                                mask_type_input='no_mask',
-                                mask_type_hidden='no_mask')
-        self.assertIsInstance(masked_lstm.cell.W_f, torch.nn.Linear)
-        self.assertIsInstance(masked_lstm.cell.U_f, torch.nn.Linear)
-
-        masked_lstm = MaskedRNN(10, 5, 1,
-                                cell_type='lstm',
-                                mask_type_input='feat',
-                                mask_type_hidden='feat')
-        self.assertIsInstance(masked_lstm.cell.W_f, MaskedLinear)
-        self.assertIsInstance(masked_lstm.cell.U_f, MaskedLinear)
-
-        masked_lstm = MaskedRNN(10, 5, 1,
-                                cell_type='lstm',
-                                mask_type_input='elem',
-                                mask_type_hidden='elem')
-        self.assertIsInstance(masked_lstm.cell.W_f, MaskedLinear)
-        self.assertIsInstance(masked_lstm.cell.U_f, MaskedLinear)
-
-        masked_lstm = MaskedRNN(10, 5, 1,
-                                cell_type='lstm',
-                                mask_type_input='input',
-                                mask_type_hidden='input')
-        self.assertIsInstance(masked_lstm.cell.W_f, MaskedLinear)
-        self.assertIsInstance(masked_lstm.cell.U_f, MaskedLinear)
-        """
-        pass
 
     def test_input_output_types(self):
 
@@ -142,12 +110,15 @@ class TestMaskedRNN(unittest.TestCase):
                     mask_input_size = [hidden_size, hidden_size]
                 elif condition_input == 'x_h':
                     mask_input_size = [hidden_size, input_size+hidden_size]
-                self.assertEqual(list(mr.cell.W_f.W_mask.size()), mask_input_size)
+                self.assertEqual(list(mr.cell.W_f.W_mask.size()),
+                                 mask_input_size)
 
                 if condition_hidden == 'x':
                     mask_hidden_size = [hidden_size*hidden_size, input_size]
                 elif condition_hidden == 'h':
                     mask_hidden_size = [hidden_size*hidden_size, hidden_size]
                 elif condition_hidden == 'x_h':
-                    mask_hidden_size = [hidden_size*hidden_size, input_size+hidden_size]
-                self.assertEqual(list(mr.cell.U_f.W_mask.size()), mask_hidden_size)
+                    mask_hidden_size = [hidden_size*hidden_size,
+                                        input_size+hidden_size]
+                self.assertEqual(list(mr.cell.U_f.W_mask.size()),
+                                 mask_hidden_size)
