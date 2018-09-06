@@ -277,18 +277,18 @@ class RecurrentCell(nn.Module):
             x = input[:, si].unsqueeze(1)
 
             if self.mask_condition_input == 'x':
-                mask_input = x.clone()  # NOTE: clone?
+                mask_input = x
             elif self.mask_condition_input == 'h':
-                mask_input = hx[0].clone() if self.cell == 'lstm' else hx
+                mask_input = hx[0] if self.cell == 'lstm' else hx
             elif self.mask_condition_input == 'x_h':
-                mask_input = torch.cat([x.clone(), hx.clone()], dim=-1)
+                mask_input = torch.cat([x, hx], dim=-1)
 
             if self.mask_condition_hidden == 'h':
-                mask_hidden_input = hx[0].clone() if self.cell == 'lstm' else hx
+                mask_hidden_input = hx[0] if self.cell == 'lstm' else hx
             elif self.mask_condition_hidden == 'x':
-                mask_hidden_input = x.clone()
+                mask_hidden_input = x
             elif self.mask_condition_hidden == 'x_h':
-                mask_hidden_input = torch.cat([x.clone(), hx.clone()], dim=-1)
+                mask_hidden_input = torch.cat([x, hx], dim=-1)
 
             hx = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
 
