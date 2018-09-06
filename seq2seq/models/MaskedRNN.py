@@ -65,7 +65,8 @@ class MaskedRNN(nn.Module):
     def __init__(self, input_size, hidden_size, n_layers=1, batch_first=True,
                  bidirectional=False, dropout=0, cell_type='lstm',
                  mask_type_input='feat', mask_type_hidden='feat',
-                 mask_condition_input='x', mask_condition_hidden='h'):
+                 mask_condition_input='x', mask_condition_hidden='h',
+                 identity_connection=False):
 
         super(MaskedRNN, self).__init__()
 
@@ -103,6 +104,7 @@ class MaskedRNN(nn.Module):
             mask_type_hidden=mask_type_hidden,
             mask_condition_input=mask_condition_input,
             mask_condition_hidden=mask_condition_hidden,
+            identity_connection=identity_connection,
             n_layers=n_layers,
             batch_first=self.batch_first,
             bidirectional=bidirectional)
@@ -156,13 +158,17 @@ class RecurrentCell(nn.Module):
             feature-wise or or 'input' for input-wise 'elem' for element
             masking of the hidden gate parameters. Else vanilla linear
             transformations are used. (default 'feat')
-        mask_condition_input (string, optional):
+        mask_condition_input (string):
             Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to
             condtion on both. Applied to input layer.
-        mask_condition_hidden (string, optional):
+        mask_condition_hidden (string):
             Either 'x' to condtion on input x, 'h' for hidden state or 'x_h' to
             condtion on both. Applied to recurrent layer.
-
+        identity_connection (bool):
+            If true, input will be added to the output at the end of the
+            computation. I.e. F(x) + x. Note, that in_features and out_features
+            must be equal. Note, this will only be applied to the hidden to
+            hidden linear transformation. (default: False)
         n_layers (int, optional): (default: 1)
         batch_first (bool, optional): (default: True)
         bidirectional (bool, optional):
@@ -171,7 +177,8 @@ class RecurrentCell(nn.Module):
 
     def __init__(self, cell, input_size, hidden_size, mask_type_input,
                  mask_type_hidden, mask_condition_input, mask_condition_hidden,
-                 n_layers=1, batch_first=True, bidirectional=False):
+                 identity_connection, n_layers=1, batch_first=True,
+                 bidirectional=False):
 
         super(RecurrentCell, self).__init__()
 
@@ -205,7 +212,8 @@ class RecurrentCell(nn.Module):
         hidden_args = (hidden_size,
                        hidden_size,
                        mask_type_hidden,
-                       mask_in_features_hidden)
+                       mask_in_features_hidden,
+                       identity_connection)
 
         if self.cell == 'srn':
             self.W = MaskedLinear(*input_args)
@@ -309,7 +317,9 @@ class RecurrentCell(nn.Module):
             return hx
 
     def _rnn_forward_step(self, x, hx, mask_input, mask_hidden_input):
-        hx = F.tanh(self.W(x, mask_input) + self.U(hx, mask_hidden_input) + self.b)
+        hx = F.tanh(self.W(x, mask_input) +
+                    self.U(hx, mask_hidden_input) +
+                    self.b)
         return hx
 
     def _gru_forward_step(self, x, hx, mask_input, mask_hidden_input):
@@ -357,6 +367,10 @@ class MaskedLinear(nn.Module):
             masking of the parameters.
         mask_in_features (int, optional): Number of input dimensions of the
             masking matrix.
+        identity_connection (bool, optional):
+            If true, input will be added to the output at the end of the
+            computation. I.e. F(x) + x. Note, that in_features and out_features
+            must be equal. (default: False)
     Inputs: input
         - **input**: torch.FloatTensor of size N*, in_features
     Outputs: output
@@ -369,13 +383,18 @@ class MaskedLinear(nn.Module):
     """
 
     def __init__(self, in_features, out_features, wise,
-                 mask_in_features=None):
+                 mask_in_features=None, identity_connection=False):
 
         super(MaskedLinear, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
         self.wise = wise
+        self.identity_connection = identity_connection
+        if self.identity_connection and self.in_features != self.out_features:
+            raise RuntimeError("For identity connection, in- and output " +
+                               "features must be equal, but got {} and {}"
+                               .format(self.in_features, self.out_features))
         if mask_in_features is None:
             self.mask_in_features = in_features
         else:
@@ -422,13 +441,17 @@ class MaskedLinear(nn.Module):
                     mask * self.W.unsqueeze(0).repeat(mask.size(0), 1, 1)
                 output = torch.bmm(input, masked_weight.transpose(1, 2))
 
+        if self.identity_connection:
+            output += input
+
         return output
 
     def __repr__(self):
-        return "MaskedLinear(in_features={}, out_features={}, wise={}, " + \
-               "mask_in_features={}, mask_out_features={})"\
+        return ("MaskedLinear(in_features={}, out_features={}, wise={}, " +
+                "mask_in_features={}, mask_out_features={}, identity={})")\
                .format(self.in_features,
                        self.out_features,
                        self.wise,
                        self.mask_in_features,
-                       self.mask_out_features)
+                       self.mask_out_features,
+                       self.identity_connection)

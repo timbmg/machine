@@ -70,11 +70,13 @@ parser.add_argument('--encoder_rnn_cell_mask_type_input', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_type_hidden', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_condition_input', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_condition_hidden', type=str, default='')
+parser.add_argument('--encoder_rnn_cell_identity_connection', action='store_true')
 
 parser.add_argument('--decoder_rnn_cell_mask_type_input', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_mask_type_hidden', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_mask_condition_input', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_mask_condition_hidden', type=str, default='')
+parser.add_argument('--decoder_rnn_cell_identity_connection', action='store_true')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -217,6 +219,7 @@ else:
     if len(encoder_rnn_cell_kwargs) > 0:
         encoder_rnn_cell_kwargs['cell_type'] = opt.encoder_cell
         opt.encoder_cell = 'masked'
+        encoder_rnn_cell_kwargs['identity_connection'] = opt.encoder_rnn_cell_identity_connection
 
     decoder_rnn_cell_kwargs = dict()
     if opt.decoder_rnn_cell_mask_type_input in valid_mask_opts:
@@ -230,6 +233,7 @@ else:
     if len(decoder_rnn_cell_kwargs) > 0:
         decoder_rnn_cell_kwargs['cell_type'] = opt.decoder_cell
         opt.decoder_cell = 'masked'
+        decoder_rnn_cell_kwargs['identity_connection'] = opt.decoder_rnn_cell_identity_connection
 
     # Initialize model
     hidden_size = opt.hidden_size
@@ -254,6 +258,7 @@ else:
                          **decoder_rnn_cell_kwargs)
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
+    print(seq2seq)
 
     for param in seq2seq.parameters():
         param.data.uniform_(-0.08, 0.08)

@@ -46,6 +46,16 @@ class TestMaskedLinear(unittest.TestCase):
         ml = MaskedLinear(10, 5, 'elem')
         self.assertEqual(get_num_params(ml), (10*5 + 10*(10*5)))
 
+        # test with differnt mask input size
+        ml = MaskedLinear(10, 5, 'feat', mask_in_features=20)
+        self.assertEqual(get_num_params(ml), 10*5 + 20*5)
+
+        ml = MaskedLinear(10, 5, 'input', mask_in_features=20)
+        self.assertEqual(get_num_params(ml), (10*5 + 20*10))
+
+        ml = MaskedLinear(10, 5, 'elem', mask_in_features=20)
+        self.assertEqual(get_num_params(ml), (10*5 + 20*(10*5)))
+
     def test_output_size_2D(self):
 
         x = torch.FloatTensor(4, 10)
@@ -65,3 +75,14 @@ class TestMaskedLinear(unittest.TestCase):
 
         ml = MaskedLinear(10, 5, 'input')
         self.assertEqual(list(ml(x).size()), [4, 1, 5])
+
+    def test_identity_connection(self):
+
+        x = torch.FloatTensor(4, 10)
+        ml = MaskedLinear(10, 10, 'feat', identity_connection=True)
+        ml(x)
+
+        with self.assertRaises(RuntimeError):
+            # input and output features are not compatible with
+            # identity connection
+            MaskedLinear(10, 5, 'feat', identity_connection=True)

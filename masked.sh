@@ -44,4 +44,5 @@ python3 ../machine/train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor 
 --encoder_rnn_cell_mask_condition_input $ENCODER_RNN_CELL_MASK_CONIDTION_INPUT \
 --encoder_rnn_cell_mask_condition_hidden $ENCODER_RNN_CELL_MASK_CONIDTION_HIDDEN \
 --decoder_rnn_cell_mask_condition_input $DECODER_RNN_CELL_MASK_CONIDTION_INPUT \
---decoder_rnn_cell_mask_condition_hidden $DECODER_RNN_CELL_MASK_CONIDTION_HIDDEN
+--decoder_rnn_cell_mask_condition_hidden $DECODER_RNN_CELL_MASK_CONIDTION_HIDDEN \
+--decoder_rnn_cell_identity_connection
