@@ -66,6 +66,9 @@ parser.add_argument('--log-level', default='info', help='Logging level.')
 parser.add_argument('--write-logs', help='Specify file to write logs to after training')
 parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device to use')
 
+
+parser.add_argument('--decoder_only', action='store_true')
+
 parser.add_argument('--encoder_rnn_cell_mask_type_input', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_type_hidden', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_condition_input', type=str, default='')
@@ -238,14 +241,20 @@ else:
     # Initialize model
     hidden_size = opt.hidden_size
     decoder_hidden_size = hidden_size*2 if opt.bidirectional else hidden_size
-    encoder = EncoderRNN(len(src.vocab), max_len, hidden_size,
-                         opt.embedding_size,
-                         dropout_p=opt.dropout_p_encoder,
-                         n_layers=opt.n_layers,
-                         bidirectional=opt.bidirectional,
-                         rnn_cell=opt.encoder_cell,
-                         variable_lengths=True,
-                         **encoder_rnn_cell_kwargs)
+    if opt.decoder_only:
+        encoder = None
+        opt.attention = False
+        opt.attention_method = None
+        print("Decoder only mode. Attention mechanisms disabled.")
+    else:
+        encoder = EncoderRNN(len(src.vocab), max_len, hidden_size,
+                             opt.embedding_size,
+                             dropout_p=opt.dropout_p_encoder,
+                             n_layers=opt.n_layers,
+                             bidirectional=opt.bidirectional,
+                             rnn_cell=opt.encoder_cell,
+                             variable_lengths=True,
+                             **encoder_rnn_cell_kwargs)
     decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
                          dropout_p=opt.dropout_p_decoder,
                          n_layers=opt.n_layers,

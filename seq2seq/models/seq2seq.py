@@ -40,7 +40,8 @@ class Seq2seq(nn.Module):
         self.decode_function = decode_function
 
     def flatten_parameters(self):
-        self.encoder.rnn.flatten_parameters()
+        if self.encoder is not None:
+            self.encoder.rnn.flatten_parameters()
         self.decoder.rnn.flatten_parameters()
 
     def forward(self, input_variable, input_lengths=None, target_variables=None,
@@ -55,7 +56,10 @@ class Seq2seq(nn.Module):
             provided_attention = None
 
 
-        encoder_outputs, encoder_hidden = self.encoder(input_variable, input_lengths)
+        if self.encoder is None:
+            encoder_outputs, encoder_hidden = None, None
+        else:
+            encoder_outputs, encoder_hidden = self.encoder(input_variable, input_lengths)
         result = self.decoder(inputs=target_output,
                               encoder_hidden=encoder_hidden,
                               encoder_outputs=encoder_outputs,
