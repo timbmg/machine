@@ -39,10 +39,13 @@ class Seq2seq(nn.Module):
         self.decoder = decoder
         self.decode_function = decode_function
 
+        if self.decoder is None:
+            self.out = nn.Linear(self.encoder.rnn.hidden_size, self.encoder.output_vocab_size)
+
     def flatten_parameters(self):
-        if self.encoder is not None:
-            self.encoder.rnn.flatten_parameters()
-        self.decoder.rnn.flatten_parameters()
+        self.encoder.rnn.flatten_parameters()
+        if self.decoder is not None:
+            self.decoder.rnn.flatten_parameters()
 
     def forward(self, input_variable, input_lengths=None, target_variables=None,
                 teacher_forcing_ratio=0):
@@ -55,15 +58,27 @@ class Seq2seq(nn.Module):
             target_output = None
             provided_attention = None
 
-
-        if self.encoder is None:
-            encoder_outputs, encoder_hidden = None, None
+        encoder_outputs, encoder_hidden = self.encoder(input_variable, input_lengths)
+        if self.decoder is not None:
+            result = self.decoder(inputs=target_output,
+                                  encoder_hidden=encoder_hidden,
+                                  encoder_outputs=encoder_outputs,
+                                  function=self.decode_function,
+                                  teacher_forcing_ratio=teacher_forcing_ratio,
+                                  provided_attention=provided_attention)
         else:
-            encoder_outputs, encoder_hidden = self.encoder(input_variable, input_lengths)
-        result = self.decoder(inputs=target_output,
-                              encoder_hidden=encoder_hidden,
-                              encoder_outputs=encoder_outputs,
-                              function=self.decode_function,
-                              teacher_forcing_ratio=teacher_forcing_ratio,
-                              provided_attention=provided_attention)
+            log_probs = self.decode_function(self.out(encoder_outputs), dim=-1)
+            other = dict()
+            other['sequence'] = log_probs.topk(1)[1] # B x S x V
+
+            a = list()
+            b = list()
+            for si in range(other['sequence'].size(1)):
+                a.append(other['sequence'][:, si])
+                b.append(log_probs[:, si])
+            other['sequence'] = a
+            log_probs = b
+
+            result = log_probs, encoder_hidden, other
+
         return result

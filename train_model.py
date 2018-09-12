@@ -67,7 +67,7 @@ parser.add_argument('--write-logs', help='Specify file to write logs to after tr
 parser.add_argument('--cuda_device', default=0, type=int, help='set cuda device to use')
 
 
-parser.add_argument('--decoder_only', action='store_true')
+parser.add_argument('--encoder_only', action='store_true')
 
 parser.add_argument('--encoder_rnn_cell_mask_type_input', type=str, default='')
 parser.add_argument('--encoder_rnn_cell_mask_type_hidden', type=str, default='')
@@ -136,6 +136,8 @@ train = torchtext.data.TabularDataset(
     fields=tabular_data_fields,
     filter_pred=len_filter
 )
+print(train[0].src)
+print(train[0].tgt)
 
 if opt.dev:
     dev = torchtext.data.TabularDataset(
@@ -241,30 +243,31 @@ else:
     # Initialize model
     hidden_size = opt.hidden_size
     decoder_hidden_size = hidden_size*2 if opt.bidirectional else hidden_size
-    if opt.decoder_only:
-        encoder = None
+    encoder = EncoderRNN(len(src.vocab), max_len, hidden_size,
+                         opt.embedding_size,
+                         dropout_p=opt.dropout_p_encoder,
+                         n_layers=opt.n_layers,
+                         bidirectional=opt.bidirectional,
+                         rnn_cell=opt.encoder_cell,
+                         variable_lengths=True,
+                         output_vocab_size=len(tgt.vocab) if opt.encoder_only else None,
+                         **encoder_rnn_cell_kwargs)
+    if opt.encoder_only:
+        decoder = None
         opt.attention = False
         opt.attention_method = None
-        print("Decoder only mode. Attention mechanisms disabled.")
+        print("Encoder only mode. Attention mechanisms disabled.")
     else:
-        encoder = EncoderRNN(len(src.vocab), max_len, hidden_size,
-                             opt.embedding_size,
-                             dropout_p=opt.dropout_p_encoder,
+        decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
+                             dropout_p=opt.dropout_p_decoder,
                              n_layers=opt.n_layers,
+                             use_attention=opt.attention,
+                             attention_method=opt.attention_method,
+                             full_focus=opt.full_focus,
                              bidirectional=opt.bidirectional,
-                             rnn_cell=opt.encoder_cell,
-                             variable_lengths=True,
-                             **encoder_rnn_cell_kwargs)
-    decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
-                         dropout_p=opt.dropout_p_decoder,
-                         n_layers=opt.n_layers,
-                         use_attention=opt.attention,
-                         attention_method=opt.attention_method,
-                         full_focus=opt.full_focus,
-                         bidirectional=opt.bidirectional,
-                         rnn_cell=opt.decoder_cell,
-                         eos_id=tgt.eos_id, sos_id=tgt.sos_id,
-                         **decoder_rnn_cell_kwargs)
+                             rnn_cell=opt.decoder_cell,
+                             eos_id=tgt.eos_id, sos_id=tgt.sos_id,
+                             **decoder_rnn_cell_kwargs)
     seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
     print(seq2seq)

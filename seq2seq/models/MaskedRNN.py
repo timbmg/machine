@@ -401,7 +401,8 @@ class MaskedLinear(nn.Module):
             self.mask_in_features = mask_in_features
 
         if wise == 'no_mask':
-            pass
+            self.mask_in_features = 0
+            self.mask_out_features = 0
         elif wise == 'feat':
             self.mask_out_features = out_features
         elif wise == 'input':
