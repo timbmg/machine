@@ -35,7 +35,7 @@ parser.add_argument('--monitor', nargs='+', default=[], help='Data to monitor du
 parser.add_argument('--output_dir', default='../models', help='Path to model directory. If load_checkpoint is True, then path to checkpoint directory has to be provided')
 parser.add_argument('--epochs', type=int, help='Number of epochs', default=6)
 parser.add_argument('--optim', type=str, help='Choose optimizer', choices=['adam', 'adadelta', 'adagrad', 'adamax', 'rmsprop', 'sgd'])
-parser.add_argument('--max_len', type=int, help='Maximum sequence length', default=50)
+parser.add_argument('--max_len', type=int, help='Maximum sequence length', default=100)
 parser.add_argument('--encoder_cell', help="Chose type of rnn cell for encoder", default='lstm')
 parser.add_argument('--decoder_cell', help="Chose type of rnn cell dor decoder", default='lstm')
 parser.add_argument('--bidirectional', action='store_true', help="Flag for bidirectional encoder")
