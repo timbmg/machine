@@ -51,7 +51,7 @@ parser.add_argument('--attention', choices=['pre-rnn', 'post-rnn'], default=Fals
 parser.add_argument('--attention_method', choices=['dot', 'mlp', 'concat', 'hard'], default=None)
 parser.add_argument('--use_attention_loss', action='store_true')
 parser.add_argument('--scale_attention_loss', type=float, default=1.)
-parser.add_argument('--scale_regularization_loss', type=float, default=1.)
+parser.add_argument('--scale_regularization_loss', type=float, default=0.00001)
 parser.add_argument('--xent_loss', type=float, default=1.)
 parser.add_argument('--full_focus', action='store_true')
 parser.add_argument('--batch_size', type=int, help='Batch size', default=32)
@@ -84,6 +84,7 @@ parser.add_argument('--decoder_rnn_cell_identity_connection', action='store_true
 
 
 parser.add_argument('--use_mask_linear_reg', action='store_true')
+parser.add_argument('--mask_linear_reg_variance', type=float,default=0.1, help='variance of the normal distribution that penalizes the mask values')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -305,7 +306,7 @@ losses = [NLLLoss(ignore_index=pad)]
 loss_weights = [float(opt.xent_loss)]
 print('use_linear_reg')
 if opt.use_mask_linear_reg:
-    reg_loss = LinearMaskLoss()
+    reg_loss = LinearMaskLoss(variance=opt.mask_linear_reg_variance)
     loss_weights.append(opt.scale_regularization_loss)
     losses.append(reg_loss)
 

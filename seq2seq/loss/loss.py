@@ -212,15 +212,18 @@ class AttentionLoss(NLLLoss):
 
 class LinearMaskLoss(Loss):
     """ Batch averaged regularization loss of the linear mask output
+
     Args:
+        size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
+        variance (float, optional): variance of the normal distribution that penalizes the mask values
     """
     _NAME = "Avg LinearMaskLoss"
     _SHORTNAME = "reg_loss"
 
-    def __init__(self, size_average=False):
+    def __init__(self, size_average=False, variance=0.1):
 
         self.size_average = size_average
-        self.n = torch.distributions.normal.Normal(0, 0.8)
+        self.n = torch.distributions.normal.Normal(0.5, variance)
 
         super(LinearMaskLoss, self).__init__(
             self._NAME, self._SHORTNAME, None, None, None)
@@ -245,19 +248,14 @@ class LinearMaskLoss(Loss):
         total_loss = 0
         if masks is None:
             return total_loss
-        maximum = self.n.log_prob(1).pow(2)
-        total_loss = sum([1 - (self.n.log_prob(val).pow(2) / maximum) for val in masks.squeeze().view(-1)])
+        total_loss = (self.n.log_prob(masks.squeeze().view(-1)).exp()).sum()
         return total_loss
 
     def eval_step(self, encoder_masks):
         for masks in encoder_masks:
             if masks is not None:
                 # calculate penalty of masks through normal distribution
-                #self.acc_loss += self.norm_loss(masks)
-
-                # calculate norm over masks
-                norm = masks.squeeze().view(-1).norm(2)
-                self.acc_loss += torch.autograd.Variable(norm, requires_grad=True)
+                self.acc_loss += self.norm_loss(masks)
         self.norm_term += 1
 
     def cuda(self):
