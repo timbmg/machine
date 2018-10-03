@@ -14,7 +14,7 @@ from collections import OrderedDict
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
 from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
-from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss
+from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import SourceField, TargetField, AttentionField
@@ -51,6 +51,7 @@ parser.add_argument('--attention', choices=['pre-rnn', 'post-rnn'], default=Fals
 parser.add_argument('--attention_method', choices=['dot', 'mlp', 'concat', 'hard'], default=None)
 parser.add_argument('--use_attention_loss', action='store_true')
 parser.add_argument('--scale_attention_loss', type=float, default=1.)
+parser.add_argument('--scale_regularization_loss', type=float, default=1.)
 parser.add_argument('--xent_loss', type=float, default=1.)
 parser.add_argument('--full_focus', action='store_true')
 parser.add_argument('--batch_size', type=int, help='Batch size', default=32)
@@ -80,6 +81,9 @@ parser.add_argument('--decoder_rnn_cell_mask_type_hidden', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_mask_condition_input', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_mask_condition_hidden', type=str, default='')
 parser.add_argument('--decoder_rnn_cell_identity_connection', action='store_true')
+
+
+parser.add_argument('--use_mask_linear_reg', action='store_true')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -297,13 +301,18 @@ output_vocabulary = output_vocab.itos
 # Prepare loss and metrics
 pad = output_vocab.stoi[tgt.pad_token]
 losses = [NLLLoss(ignore_index=pad)]
-# loss_weights = [1.]
-loss_weights = [float(opt.xent_loss)]
 
+loss_weights = [float(opt.xent_loss)]
+print('use_linear_reg')
+if opt.use_mask_linear_reg:
+    reg_loss = LinearMaskLoss()
+    loss_weights.append(opt.scale_regularization_loss)
+    losses.append(reg_loss)
 
 if opt.use_attention_loss:
     losses.append(AttentionLoss(ignore_index=IGNORE_INDEX))
     loss_weights.append(opt.scale_attention_loss)
+
 
 for loss in losses:
   loss.to(device)
