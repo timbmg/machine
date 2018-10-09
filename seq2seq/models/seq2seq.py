@@ -58,7 +58,7 @@ class Seq2seq(nn.Module):
             target_output = None
             provided_attention = None
 
-        encoder_outputs, encoder_hidden = self.encoder(input_variable, input_lengths)
+        encoder_outputs, encoder_hidden, encoder_masks = self.encoder(input_variable, input_lengths)
         if self.decoder is not None:
             result = self.decoder(inputs=target_output,
                                   encoder_hidden=encoder_hidden,
@@ -77,6 +77,7 @@ class Seq2seq(nn.Module):
                 a.append(other['sequence'][:, si])
                 b.append(log_probs[:, si])
             other['sequence'] = a
+            other['encoder_masks'] = encoder_masks
             log_probs = b
 
             result = log_probs, encoder_hidden, other

@@ -38,8 +38,9 @@ class Loss(object):
         self.inputs = inputs
         self.target = target
         self.criterion = criterion
-        if not issubclass(type(self.criterion), nn.modules.loss._Loss):
-            raise ValueError("Criterion has to be a subclass of torch.nn._Loss")
+        if criterion is not None:
+            if not issubclass(type(self.criterion), nn.modules.loss._Loss):
+                raise ValueError("Criterion has to be a subclass of torch.nn._Loss")
         # accumulated loss
         self.acc_loss = 0
         # normalization term
@@ -208,3 +209,57 @@ class AttentionLoss(NLLLoss):
         outputs = torch.log(step_outputs.contiguous().view(batch_size, -1).clamp(min=1e-20))
         self.acc_loss += self.criterion(outputs, step_target)
         self.norm_term += 1
+
+class LinearMaskLoss(Loss):
+    """ Batch averaged regularization loss of the linear mask output
+
+    Args:
+        size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
+        variance (float, optional): variance of the normal distribution that penalizes the mask values
+    """
+    _NAME = "Avg LinearMaskLoss"
+    _SHORTNAME = "reg_loss"
+
+    def __init__(self, size_average=False, variance=0.1):
+
+        self.size_average = size_average
+        self.n = torch.distributions.normal.Normal(0.5, variance)
+
+        super(LinearMaskLoss, self).__init__(
+            self._NAME, self._SHORTNAME, None, None, None)
+
+    def eval_batch(self, decoder_outputs, other, target_variable):
+        # lists with:
+        # decoder outputs # (batch, vocab_size?)
+        # attention scores # (batch, 1, input_length)
+        encoder_masks = other['encoder_masks']
+        self.eval_step(encoder_masks)
+
+    def get_loss(self):
+        if isinstance(self.acc_loss, int):
+            return 0
+        # total loss for all batches
+        if self.size_average:
+            # average loss per batch
+            self.acc_loss /= self.norm_term
+        return self.acc_loss
+
+    def norm_loss(self, masks):
+        total_loss = 0
+        if masks is None:
+            return total_loss
+        total_loss = (self.n.log_prob(masks.squeeze().view(-1)).exp()).sum()
+        return total_loss
+
+    def eval_step(self, encoder_masks):
+        for masks in encoder_masks:
+            if masks is not None:
+                # calculate penalty of masks through normal distribution
+                self.acc_loss += self.norm_loss(masks)
+        self.norm_term += 1
+
+    def cuda(self):
+        pass
+
+    def to(self, device):
+        pass

@@ -126,7 +126,7 @@ class MaskedRNN(nn.Module):
                 input,
                 batch_first=self.batch_first)
 
-        output, hx = self.cell(input, hx)
+        output, hx, masked = self.cell(input, hx)
 
         # repack
         if is_packed:
@@ -135,7 +135,7 @@ class MaskedRNN(nn.Module):
                 lengths,
                 batch_first=self.batch_first)
 
-        return output, hx
+        return output, hx, masked
 
 
 class RecurrentCell(nn.Module):
@@ -290,7 +290,7 @@ class RecurrentCell(nn.Module):
             elif self.mask_condition_hidden == 'x_h':
                 mask_hidden_input = torch.cat([x, hx], dim=-1)
 
-            hx = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
+            hx, masks = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
 
             if self.cell == 'lstm':
                 output.append(hx[0])
@@ -303,7 +303,7 @@ class RecurrentCell(nn.Module):
         else:
             hx = hx.transpose(0, 1)
 
-        return output, hx
+        return output, hx, masks
 
     def _init_hidden(self, input, batch_size):
         hx = input.new_zeros(
@@ -316,27 +316,29 @@ class RecurrentCell(nn.Module):
         else:
             return hx
 
-    def _rnn_forward_step(self, x, hx, mask_input, mask_hidden_input):
-        hx = F.tanh(self.W(x, mask_input) +
-                    self.U(hx, mask_hidden_input) +
-                    self.b)
-        return hx
+    def _rnn_forward_step(self, x, hh, mask_input, mask_hidden_input):
+        hx_, mask_W = self.W(x, mask_input)
+        hh_, mask_U = self.U(hh, mask_hidden_input)
+        hh = F.tanh(hx_ + hh_ + self.b)
+        return hh, [mask_W, mask_U]
 
     def _gru_forward_step(self, x, hx, mask_input, mask_hidden_input):
-        r = F.sigmoid(self.W_r(x, mask_input) +
-                      self.U_r(hx, mask_hidden_input) +
-                      self.b_r)
-        z = F.sigmoid(self.W_z(x, mask_input) +
-                      self.U_z(hx, mask_hidden_input) +
-                      self.b_z)
+        hx_r, mask_W_r = self.W_r(x, mask_input)
+        hh_r, mask_U_r = self.U_r(hx, mask_hidden_input)
+        r = F.sigmoid(hx_r + hh_r + self.b_r)
+        hx_z, mask_W_z = self.W_z(x, mask_input)
+        hh_z, mask_W_z = self.U_z(hx, mask_hidden_input)
+        z = F.sigmoid( hx_z + hh_z + self.b_z)
         # NOTE: masked_hidden_input should be redefined with r*hx hidden state
-        hx = z * hx + \
-            (1-z) * F.tanh(self.W_h(x, mask_input) +
-                           self.U_h((r * hx), mask_hidden_input) +
-                           self.b_h)
-        return hx
+
+        hx_h, mask_W_h = self.W_h(x, mask_input)
+        hh_h, mask_U_h = self.U_h((r * hx), mask_hidden_input)
+        hx = z * hx + (1-z) * F.tanh(hx_h + hh_h + self.b_h)
+
+        return hx, [mask_W_r, mask_U_r, mask_W_z, mask_W_z, mask_W_h, mask_U_h]
 
     def _lstm_forward_step(self, x, hx, mask_input, mask_hidden_input):
+        # TODO:
         h, c = hx
         f = F.sigmoid(self.W_f(x, mask_input) +
                       self.U_f(h, mask_hidden_input) +
@@ -423,6 +425,7 @@ class MaskedLinear(nn.Module):
 
         if self.wise == 'no_mask':
             output = F.linear(input, self.W)
+            mask = None
         else:
             if mask_input is None:
                 mask_input = input
@@ -444,8 +447,7 @@ class MaskedLinear(nn.Module):
 
         if self.identity_connection:
             output += input
-
-        return output
+        return output, mask
 
     def __repr__(self):
         return ("MaskedLinear(in_features={}, out_features={}, wise={}, " +
