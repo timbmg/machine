@@ -320,7 +320,7 @@ class RecurrentCell(nn.Module):
         hx_, mask_W = self.W(x, mask_input)
         hh_, mask_U = self.U(hh, mask_hidden_input)
         hh = F.tanh(hx_ + hh_ + self.b)
-        return hh, [mask_W, mask_U]
+        return hh, {'mask_W': mask_W, 'mask_U': mask_U}
 
     def _gru_forward_step(self, x, hx, mask_input, mask_hidden_input):
         hx_r, mask_W_r = self.W_r(x, mask_input)
@@ -335,7 +335,8 @@ class RecurrentCell(nn.Module):
         hh_h, mask_U_h = self.U_h((r * hx), mask_hidden_input)
         hx = z * hx + (1-z) * F.tanh(hx_h + hh_h + self.b_h)
 
-        return hx, [mask_W_r, mask_U_r, mask_W_z, mask_W_z, mask_W_h, mask_U_h]
+        return hx, {'mask_W_r': mask_W_r, 'mask_U_r': mask_U_r,
+         'mask_W_z': mask_W_z, 'mask_U_z': mask_U_z, 'mask_W_h':mask_W_h, 'mask_U_h': mask_U_h}
 
     def _lstm_forward_step(self, x, hx, mask_input, mask_hidden_input):
         # TODO:

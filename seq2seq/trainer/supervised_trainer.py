@@ -19,7 +19,6 @@ from seq2seq.optim import Optimizer
 from seq2seq.util.checkpoint import Checkpoint
 from seq2seq.util.log import Log
 
-import seq2seq.MaskedLinear
 from tensorboardX import SummaryWriter
 
 class SupervisedTrainer(object):
@@ -72,10 +71,16 @@ class SupervisedTrainer(object):
         for i, loss in enumerate(losses, 0):
             loss.scale_loss(self.loss_weights[i])
             loss.backward(retain_graph=True)
-        if step != None or total_steps!= None or tensorboard_writer != None:
+        if tensorboard_writer != None:
             if step % self.checkpoint_every == 0 or step == total_steps:
                 for name, param in model.named_parameters():
                     tensorboard_writer.add_histogram(name+'_gradient', param.grad.cpu().data.numpy(), step)
+
+                for name, mask in other['encoder_masks'].items():
+                    if mask is not None:
+                        # only sample one mask
+                        rand = torch.randint(0, len(mask), (1,))
+                        tensorboard_writer.add_histogram(name, mask[torch.Tensor(rand).long()], step)
         self.optimizer.step()
         model.zero_grad()
 
@@ -167,10 +172,9 @@ class SupervisedTrainer(object):
                         losses, metrics = self.evaluator.evaluate(model, monitor_data[m_data], self.get_batch_data)
                         for losses_metrics, name in zip(zip(losses, metrics),m_logs):
                             loss, metric  = losses_metrics
-                            tensorboard_writer.add_scalar(('{}_{}').format(metric.name, os.path.basename(name)), metric.get_val(), step)
-                            tensorboard_writer.add_scalar(('{}_{}').format(loss.name, os.path.basename(name)), loss.get_loss(), step)
+                            tensorboard_writer.add_scalar(('{}_{}_{}').format(metric.name, os.path.basename(name), m_data), metric.get_val(), step)
+                            tensorboard_writer.add_scalar(('{}_{}_{}').format(loss.name, os.path.basename(name), m_data), loss.get_loss(), step)
                         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
-                        tensorboard_writer.add_scalar('total_loss_test', total_loss, step)
                         m_logs[m_data] = log_msg
                         logs.write_to_log(m_data, losses, metrics, step)
 
@@ -194,7 +198,6 @@ class SupervisedTrainer(object):
 
 
                     tensorboard_writer.add_scalar('loss_best_dev', max_eval_loss, step)
-                    tensorboard_writer.add_scalar('total_loss_dev', total_loss, step)
                     # save model parameters:
                     for param_name, param in model.named_parameters():
                         tensorboard_writer.add_histogram(param_name, param.clone().cpu().data.numpy(), step)
@@ -208,10 +211,6 @@ class SupervisedTrainer(object):
                             print('------------ Early Stopping! --------------')
                             early_stopping = True
                             break
-                    if metrics[-1].get_val() >= 100:
-                        early_stopping =True
-                        print('------------- Early Stopping! ----------------')
-                        break
                     if total_loss < max_eval_loss:
                             index_max = loss_best.index(max_eval_loss)
                             # rm prev model
@@ -226,7 +225,11 @@ class SupervisedTrainer(object):
                                        epoch=epoch, step=step,
                                        input_vocab=data.fields[seq2seq.src_field_name].vocab,
                                        output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir, name=model_name)
-            if step_elapsed == 0: continue
+                if metrics[0].get_val() >= 1:
+                    early_stopping =True
+                    print('------------- Early Stopping! ----------------')
+                    break
+                if step_elapsed == 0: continue
 
             for loss in losses:
                 epoch_loss_avg[loss.log_name] = epoch_loss_total[loss.log_name] / min(steps_per_epoch, step - start_step)

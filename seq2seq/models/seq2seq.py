@@ -82,4 +82,8 @@ class Seq2seq(nn.Module):
 
             result = log_probs, encoder_hidden, other
 
+        decoder_output, decoder_hidden, ret_dict = result
+
+        ret_dict['encoder_masks'] = encoder_masks
+        result = decoder_output, decoder_hidden, ret_dict
         return result

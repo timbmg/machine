@@ -233,7 +233,9 @@ class LinearMaskLoss(Loss):
         # decoder outputs # (batch, vocab_size?)
         # attention scores # (batch, 1, input_length)
         encoder_masks = other['encoder_masks']
+        decoder_masks = other['decoder_masks']
         self.eval_step(encoder_masks)
+        self.eval_step(decoder_masks)
 
     def get_loss(self):
         if isinstance(self.acc_loss, int):
@@ -244,18 +246,18 @@ class LinearMaskLoss(Loss):
             self.acc_loss /= self.norm_term
         return self.acc_loss
 
-    def norm_loss(self, masks):
+    def norm_loss(self, mask):
         total_loss = 0
-        if masks is None:
+        if mask is None:
             return total_loss
-        total_loss = (self.n.log_prob(masks.squeeze().view(-1)).exp()).sum()
+        total_loss = (self.n.log_prob(mask.squeeze().view(-1)).exp()).sum()
         return total_loss
 
     def eval_step(self, encoder_masks):
-        for masks in encoder_masks:
-            if masks is not None:
+        for _,mask in encoder_masks.items():
+            if mask is not None:
                 # calculate penalty of masks through normal distribution
-                self.acc_loss += self.norm_loss(masks)
+                self.acc_loss += self.norm_loss(mask)
         self.norm_term += 1
 
     def cuda(self):

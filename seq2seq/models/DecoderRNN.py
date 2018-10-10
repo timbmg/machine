@@ -135,21 +135,21 @@ class DecoderRNN(BaseRNN):
             if self.full_focus:
                 merged_input = F.relu(self.ffocus_merge(combined_input))
                 combined_input = torch.mul(context, merged_input)
-            output, hidden = self.rnn(combined_input, hidden)
+            output, hidden, masks = self.rnn(combined_input, hidden)
 
         elif self.use_attention == 'post-rnn':
-            output, hidden = self.rnn(embedded, hidden)
+            output, hidden, masks = self.rnn(embedded, hidden)
             # Apply the attention method to get the attention vector and weighted context vector. Provide decoder step for hard attention
             context, attn = self.attention(output, encoder_outputs, **attention_method_kwargs)
             output = torch.cat((context, output), dim=2)
 
         elif not self.use_attention:
             attn = None
-            output, hidden = self.rnn(embedded, hidden)
+            output, hidden, masks = self.rnn(embedded, hidden)
 
         predicted_softmax = function(self.out(output.contiguous().view(-1, self.out.in_features)), dim=1).view(batch_size, output_size, -1)
 
-        return predicted_softmax, hidden, attn
+        return predicted_softmax, hidden, attn, masks
 
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
                     function=F.log_softmax, teacher_forcing_ratio=0, provided_attention=None):
@@ -211,7 +211,7 @@ class DecoderRNN(BaseRNN):
                 # Perform one forward step
                 if self.attention and isinstance(self.attention.method, HardGuidance):
                     attention_method_kwargs['step'] = di
-                decoder_output, decoder_hidden, step_attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
+                decoder_output, decoder_hidden, step_attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
                                                                          function=function, **attention_method_kwargs)
                 # Remove the unnecessary dimension.
                 step_output = decoder_output.squeeze(1)
@@ -226,7 +226,7 @@ class DecoderRNN(BaseRNN):
             # Forward step without unrolling
             if self.attention and isinstance(self.attention.method, HardGuidance):
                 attention_method_kwargs['step'] = -1
-            decoder_output, decoder_hidden, attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, **attention_method_kwargs)
+            decoder_output, decoder_hidden, attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, **attention_method_kwargs)
 
             for di in range(decoder_output.size(1)):
                 step_output = decoder_output[:, di, :]
@@ -238,6 +238,7 @@ class DecoderRNN(BaseRNN):
 
         ret_dict[DecoderRNN.KEY_SEQUENCE] = sequence_symbols
         ret_dict[DecoderRNN.KEY_LENGTH] = lengths.tolist()
+        ret_dict['decoder_masks'] = masks
 
         return decoder_outputs, decoder_hidden, ret_dict
 
