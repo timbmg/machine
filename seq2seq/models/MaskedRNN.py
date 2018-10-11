@@ -327,7 +327,7 @@ class RecurrentCell(nn.Module):
         hh_r, mask_U_r = self.U_r(hx, mask_hidden_input)
         r = F.sigmoid(hx_r + hh_r + self.b_r)
         hx_z, mask_W_z = self.W_z(x, mask_input)
-        hh_z, mask_W_z = self.U_z(hx, mask_hidden_input)
+        hh_z, mask_U_z = self.U_z(hx, mask_hidden_input)
         z = F.sigmoid( hx_z + hh_z + self.b_z)
         # NOTE: masked_hidden_input should be redefined with r*hx hidden state
 

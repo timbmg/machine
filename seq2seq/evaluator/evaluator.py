@@ -122,7 +122,7 @@ class Evaluator(object):
 
                 # Compute metric(s) over one batch
                 metrics = self.update_batch_metrics(metrics, other, target_variable)
-                
+
                 # Compute loss(es) over one batch
                 losses = self.update_loss(losses, decoder_outputs, decoder_hidden, other, target_variable)
 

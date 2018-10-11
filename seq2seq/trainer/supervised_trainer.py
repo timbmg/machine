@@ -73,14 +73,20 @@ class SupervisedTrainer(object):
             loss.backward(retain_graph=True)
         if tensorboard_writer != None:
             if step % self.checkpoint_every == 0 or step == total_steps:
-                for name, param in model.named_parameters():
-                    tensorboard_writer.add_histogram(name+'_gradient', param.grad.cpu().data.numpy(), step)
+                #for name, param in model.named_parameters():
+                    #tensorboard_writer.add_histogram(name+'_gradient', param.grad.cpu().data.numpy(), step)
 
                 for name, mask in other['encoder_masks'].items():
                     if mask is not None:
                         # only sample one mask
-                        rand = torch.randint(0, len(mask), (1,))
-                        tensorboard_writer.add_histogram(name, mask[torch.Tensor(rand).long()], step)
+                        rand = torch.randint(0, len(mask), (10,))
+                        tensorboard_writer.add_histogram('encoder_'+name, mask[torch.Tensor(rand).long()].flatten(), step)
+
+                for name, mask in other['decoder_masks'].items():
+                    if mask is not None:
+                        # only sample one mask
+                        rand = torch.randint(0, len(mask), (10,))
+                        tensorboard_writer.add_histogram('decoder_'+name, mask[torch.Tensor(rand).long().flatten()], step)
         self.optimizer.step()
         model.zero_grad()
 
@@ -115,7 +121,7 @@ class SupervisedTrainer(object):
 
         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
         log.info(log_msg)
-        old_losses = [-1]
+        #old_losses = [-1]
         patience = 5
         logs = Log()
         loss_best = top_k*[total_loss]
@@ -163,6 +169,11 @@ class SupervisedTrainer(object):
                     m_logs = {}
                     train_losses, train_metrics = self.evaluator.evaluate(model, data, self.get_batch_data)
                     train_loss, train_log_msg, model_name = self.get_losses(train_losses, train_metrics, step)
+                    for metric in train_metrics:
+                        tensorboard_writer.add_scalar(metric.name+'_train', metric.get_val(), step)
+                    for loss in train_losses:
+                        tensorboard_writer.add_scalar(loss.name+'_train', loss.get_loss(), step)
+                    max_eval_loss = max(loss_best)
                     logs.write_to_log('Train', train_losses, train_metrics, step)
                     logs.update_step(step)
                     m_logs['Train'] = train_log_msg
@@ -170,10 +181,8 @@ class SupervisedTrainer(object):
                     # compute vals for all monitored sets
                     for m_data in monitor_data:
                         losses, metrics = self.evaluator.evaluate(model, monitor_data[m_data], self.get_batch_data)
-                        for losses_metrics, name in zip(zip(losses, metrics),m_logs):
-                            loss, metric  = losses_metrics
-                            tensorboard_writer.add_scalar(('{}_{}_{}').format(metric.name, os.path.basename(name), m_data), metric.get_val(), step)
-                            tensorboard_writer.add_scalar(('{}_{}_{}').format(loss.name, os.path.basename(name), m_data), loss.get_loss(), step)
+                        for metric in metrics:
+                            tensorboard_writer.add_scalar(('val_{}_{}').format(metric.name, m_data), metric.get_val(), step)
                         total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
                         m_logs[m_data] = log_msg
                         logs.write_to_log(m_data, losses, metrics, step)
@@ -191,26 +200,25 @@ class SupervisedTrainer(object):
                     losses, metrics = self.evaluator.evaluate(model, val_data, self.get_batch_data)
                     total_loss, log_msg, model_name = self.get_losses(losses, metrics, step)
 
-                    for loss, metric in zip(losses, metrics):
-                        tensorboard_writer.add_scalar(metric.name+'_dev', metric.get_val(), step)
-                        tensorboard_writer.add_scalar(loss.name+'_dev', loss.get_loss(), step)
+                    for metric in metrics:
+                        tensorboard_writer.add_scalar('dev_'+metric.name, metric.get_val(), step)
                     max_eval_loss = max(loss_best)
 
 
                     tensorboard_writer.add_scalar('loss_best_dev', max_eval_loss, step)
-                    # save model parameters:
-                    for param_name, param in model.named_parameters():
-                        tensorboard_writer.add_histogram(param_name, param.clone().cpu().data.numpy(), step)
+                    # # save model parameters:
+                    # for param_name, param in model.named_parameters():
+                    #     tensorboard_writer.add_histogram(param_name, param.clone().cpu().data.numpy(), step)
 
-                    current_loss = losses[-1].get_loss()
-                    if len(old_losses) < patience:
-                        old_losses.append(current_loss)
-                    else:
-                        first_loss = old_losses.pop(0)
-                        if abs(first_loss - current_loss) < 0.00001:
-                            print('------------ Early Stopping! --------------')
-                            early_stopping = True
-                            break
+                    # current_loss = losses[-1].get_loss()
+                    # if len(old_losses) < patience:
+                    #     old_losses.append(current_loss)
+                    # else:
+                    #     first_loss = old_losses.pop(0)
+                    #     if abs(first_loss - current_loss) < 0.00001:
+                    #         print('------------ Early Stopping! --------------')
+                    #         early_stopping = True
+                    #         break
                     if total_loss < max_eval_loss:
                             index_max = loss_best.index(max_eval_loss)
                             # rm prev model
@@ -225,10 +233,10 @@ class SupervisedTrainer(object):
                                        epoch=epoch, step=step,
                                        input_vocab=data.fields[seq2seq.src_field_name].vocab,
                                        output_vocab=data.fields[seq2seq.tgt_field_name].vocab).save(self.expt_dir, name=model_name)
-                if metrics[0].get_val() >= 1:
-                    early_stopping =True
-                    print('------------- Early Stopping! ----------------')
-                    break
+                # if metrics[0].get_val() >= 1:
+                #     early_stopping =True
+                #     print('------------- Early Stopping! ----------------')
+                #     break
                 if step_elapsed == 0: continue
 
             for loss in losses:

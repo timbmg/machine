@@ -61,7 +61,7 @@ class WordAccuracy(Metric):
         ignore_index (int, optional): index of masked token
     """
 
-    _NAME = "Word Accuracy"
+    _NAME = "Word_Accuracy"
     _SHORTNAME = "acc"
     _INPUT = "sequence"
 
@@ -102,7 +102,7 @@ class FinalTargetAccuracy(Metric):
         ignore_index (int, optional): index of padding
     """
 
-    _NAME = "Final Target Accuracy"
+    _NAME = "Final_Target_Accuracy"
     _SHORTNAME = "target_acc"
     _INPUT = "sequence"
 
@@ -160,7 +160,7 @@ class SequenceAccuracy(Metric):
         ignore_index (int, optional): index of masked token
     """
 
-    _NAME = "Sequence Accuracy"
+    _NAME = "Sequence_Accuracy"
     _SHORTNAME = "seq_acc"
     _INPUT = "seqlist"
 
@@ -222,7 +222,7 @@ class SymbolRewritingAccuracy(Metric):
         output_unk_symbol (str): Output UNK symbol
     """
 
-    _NAME = "Symbol Rewriting Accuracy"
+    _NAME = "Symbol_Rewriting_Accuracy"
     _SHORTNAME = "sym_rwr_acc"
     _INPUT = "seqlist"
 

@@ -51,7 +51,7 @@ parser.add_argument('--attention', choices=['pre-rnn', 'post-rnn'], default=Fals
 parser.add_argument('--attention_method', choices=['dot', 'mlp', 'concat', 'hard'], default=None)
 parser.add_argument('--use_attention_loss', action='store_true')
 parser.add_argument('--scale_attention_loss', type=float, default=1.)
-parser.add_argument('--scale_regularization_loss', type=float, default=0.00001)
+parser.add_argument('--scale_mask_reg', type=float, default=0.00001)
 parser.add_argument('--xent_loss', type=float, default=1.)
 parser.add_argument('--full_focus', action='store_true')
 parser.add_argument('--batch_size', type=int, help='Batch size', default=32)
@@ -83,9 +83,9 @@ parser.add_argument('--decoder_rnn_cell_mask_condition_hidden', type=str, defaul
 parser.add_argument('--decoder_rnn_cell_identity_connection', action='store_true')
 
 
-parser.add_argument('--use_mask_linear_reg', action='store_true')
-parser.add_argument('--mask_linear_reg_variance', type=float,default=0.1, help='variance of the normal distribution that penalizes the mask values')
-
+parser.add_argument('--use_mask_reg', action='store_true')
+parser.add_argument('--mask_reg_variance', type=float,default=0.1, help='variance of the normal distribution that penalizes the mask values')
+parser.add_argument('--mask_reg_mean', type=float,default=0.5, help='mean of the normal distribution that penalizes the mask values')
 opt = parser.parse_args()
 IGNORE_INDEX=-1
 use_output_eos = not opt.ignore_output_eos
@@ -304,10 +304,10 @@ pad = output_vocab.stoi[tgt.pad_token]
 losses = [NLLLoss(ignore_index=pad)]
 
 loss_weights = [float(opt.xent_loss)]
-print('use_linear_reg')
-if opt.use_mask_linear_reg:
-    reg_loss = LinearMaskLoss(variance=opt.mask_linear_reg_variance)
-    loss_weights.append(opt.scale_regularization_loss)
+if opt.use_mask_reg:
+    print('---------------------USING MASK REG ------------------------')
+    reg_loss = LinearMaskLoss(mean=opt.mask_reg_mean, variance=opt.mask_reg_variance)
+    loss_weights.append(opt.scale_mask_reg)
     losses.append(reg_loss)
 
 if opt.use_attention_loss:
