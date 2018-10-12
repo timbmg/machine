@@ -78,15 +78,11 @@ class SupervisedTrainer(object):
 
                 for name, mask in other['encoder_masks'].items():
                     if mask is not None:
-                        # only sample one mask
-                        rand = torch.randint(0, len(mask), (10,))
-                        tensorboard_writer.add_histogram('encoder_'+name, mask[torch.Tensor(rand).long()].flatten(), step)
+                        tensorboard_writer.add_histogram('encoder_'+name, mask.view(mask.numel()), step)
 
                 for name, mask in other['decoder_masks'].items():
                     if mask is not None:
-                        # only sample one mask
-                        rand = torch.randint(0, len(mask), (10,))
-                        tensorboard_writer.add_histogram('decoder_'+name, mask[torch.Tensor(rand).long().flatten()], step)
+                        tensorboard_writer.add_histogram('decoder_'+name, mask.view(mask.numel()), step)
         self.optimizer.step()
         model.zero_grad()
 
@@ -207,8 +203,9 @@ class SupervisedTrainer(object):
 
                     tensorboard_writer.add_scalar('loss_best_dev', max_eval_loss, step)
                     # # save model parameters:
-                    # for param_name, param in model.named_parameters():
-                    #     tensorboard_writer.add_histogram(param_name, param.clone().cpu().data.numpy(), step)
+                    for param_name, param in model.named_parameters():
+                        if 'mask' in param_name or not 'embedding' in param_name or not 'merge' in param_name or not 'bias' in param_name:
+                            tensorboard_writer.add_histogram(param_name, param.clone().cpu().data.numpy(), step)
 
                     # current_loss = losses[-1].get_loss()
                     # if len(old_losses) < patience:
