@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq
+from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, EncoderSeq2Seq
 from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
@@ -262,6 +262,7 @@ else:
         opt.attention = False
         opt.attention_method = None
         print("Encoder only mode. Attention mechanisms disabled.")
+        seq2seq = EncoderSeq2Seq(encoder)
     else:
         decoder = DecoderRNN(len(tgt.vocab), max_len, decoder_hidden_size,
                              dropout_p=opt.dropout_p_decoder,
@@ -273,7 +274,7 @@ else:
                              rnn_cell=opt.decoder_cell,
                              eos_id=tgt.eos_id, sos_id=tgt.sos_id,
                              **decoder_rnn_cell_kwargs)
-    seq2seq = Seq2seq(encoder, decoder)
+        seq2seq = Seq2seq(encoder, decoder)
     seq2seq.to(device)
     print(seq2seq)
 

@@ -64,7 +64,8 @@ class SupervisedTrainer(object):
         loss = self.loss
 
         # Forward propagation
-        decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
+        decoder_outputs, decoder_hidden, other = model(input_variable=input_variable, input_lengths=input_lengths, target_variables=target_variable
+        , teacher_forcing_ratio=teacher_forcing_ratio)
 
         losses = self.evaluator.compute_batch_loss(decoder_outputs, decoder_hidden, other, target_variable)
 
@@ -75,14 +76,14 @@ class SupervisedTrainer(object):
             if step % self.checkpoint_every == 0 or step == total_steps:
                 #for name, param in model.named_parameters():
                     #tensorboard_writer.add_histogram(name+'_gradient', param.grad.cpu().data.numpy(), step)
-
-                for name, mask in other['encoder_masks'].items():
-                    if mask is not None:
-                        tensorboard_writer.add_histogram('encoder_'+name, mask.view(mask.numel()), step)
-
-                for name, mask in other['decoder_masks'].items():
-                    if mask is not None:
-                        tensorboard_writer.add_histogram('decoder_'+name, mask.view(mask.numel()), step)
+                if 'encoder_masks' in other:
+                    for name, mask in other['encoder_masks'].items():
+                        if mask is not None:
+                            tensorboard_writer.add_histogram('encoder_'+name, mask.view(mask.numel()), step)
+                if 'decoder_masks' in other:
+                    for name, mask in other['decoder_masks'].items():
+                        if mask is not None:
+                            tensorboard_writer.add_histogram('decoder_'+name, mask.view(mask.numel()), step)
         self.optimizer.step()
         model.zero_grad()
 
