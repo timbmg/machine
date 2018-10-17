@@ -84,6 +84,7 @@ class DecoderRNN(BaseRNN):
 
         self.rnn = self.rnn_cell(input_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p, **rnn_cell_kwargs)
 
+        self.hidden_size = hidden_size
         self.output_size = vocab_size
         self.max_length = max_len
         self.use_attention = use_attention

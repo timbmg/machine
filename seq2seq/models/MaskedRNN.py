@@ -272,6 +272,7 @@ class RecurrentCell(nn.Module):
                 hx = hx.transpose(0, 1)
 
         output = list()
+        masks = list()
         for si in range(sequence_size):
 
             x = input[:, si].unsqueeze(1)
@@ -290,12 +291,13 @@ class RecurrentCell(nn.Module):
             elif self.mask_condition_hidden == 'x_h':
                 mask_hidden_input = torch.cat([x, hx], dim=-1)
 
-            hx, masks = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
+            hx, mask = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
 
             if self.cell == 'lstm':
                 output.append(hx[0])
             else:
                 output.append(hx)
+            masks.append(mask)
 
         output = torch.cat(output, dim=1)
         if self.cell == 'lstm':

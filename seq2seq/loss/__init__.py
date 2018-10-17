@@ -1,1 +1,1 @@
-from .loss import NLLLoss, Perplexity, AttentionLoss, LinearMaskLoss
+from .loss import NLLLoss, Perplexity, AttentionLoss, LinearMaskLoss, FunctionalGroupsLoss

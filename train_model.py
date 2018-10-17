@@ -14,7 +14,7 @@ from collections import OrderedDict
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
 from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, EncoderSeq2Seq
-from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss
+from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss, FunctionalGroupsLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import SourceField, TargetField, AttentionField
@@ -316,6 +316,8 @@ if opt.use_attention_loss:
     loss_weights.append(opt.scale_attention_loss)
 
 
+losses.append(FunctionalGroupsLoss())
+loss_weights.append(1)
 for loss in losses:
   loss.to(device)
 
@@ -333,7 +335,6 @@ metrics = [WordAccuracy(ignore_index=pad), SequenceAccuracy(ignore_index=pad), F
 #     output_unk_symbol=tgt.unk_token))
 
 checkpoint_path = os.path.join(opt.output_dir, opt.load_checkpoint) if opt.resume else None
-
 # create trainer
 t = SupervisedTrainer(loss=losses, metrics=metrics,
                       loss_weights=loss_weights,

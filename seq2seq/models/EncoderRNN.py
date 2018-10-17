@@ -46,6 +46,7 @@ class EncoderRNN(BaseRNN):
         self.rnn = self.rnn_cell(embedding_size, hidden_size, n_layers,
                                  batch_first=True, bidirectional=bidirectional, dropout=dropout_p, **rnn_cell_kwargs)
         self.output_vocab_size = output_vocab_size
+        self.hidden_size = hidden_size
 
     def forward(self, input_var, input_lengths=None):
         """

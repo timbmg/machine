@@ -1,6 +1,9 @@
+import torch
+torch.manual_seed(2)
 import torch.nn as nn
 import torch.nn.functional as F
 import abc
+
 
 class AbstractSeq2Seq:
     """
@@ -32,6 +35,7 @@ class EncoderSeq2Seq(AbstractSeq2Seq, nn.Module):
         super().__init__()
         self.encoder = encoder
         self.decode_function = decode_function
+        self.functional_groups = torch.randperm(self.encoder.hidden_size).view(16,-1)
         #self.out = nn.Linear(self.encoder.rnn.hidden_size, self.encoder.output_vocab_size)
 
     def flatten_parameters(self):
@@ -83,6 +87,8 @@ class DecoderSeq2Seq(AbstractSeq2Seq, nn.Module):
         super().__init__()
         self.decoder = decoder
         self.decode_function = decode_function
+        self.functional_groups = torch.randperm(self.decoder.hidden_size).view(16,-1)
+
 
     def flatten_parameters(self):
         self.decoder.rnn.flatten_parameters()
@@ -146,10 +152,11 @@ class Seq2seq(nn.Module):
 
     def forward(self, input_variable, input_lengths=None, target_variables=None,
                 teacher_forcing_ratio=0):
-
         encoder_outputs, encoder_hidden, encoder_masks  = self.encoder_seq2seq.forward(input_variable, input_lengths)
-        result = self.decoder_seq2seq.forward(encoder_hidden, encoder_outputs, target_variables, teacher_forcing_ratio)
-        decoder_output, decoder_hidden, ret_dict = result
+        decoder_output, decoder_hidden, ret_dict = self.decoder_seq2seq.forward(encoder_hidden, encoder_outputs, target_variables, teacher_forcing_ratio)
         ret_dict['encoder_masks'] = encoder_masks
+        ret_dict['encoder_outputs'] = encoder_outputs
+        ret_dict['enc_fct_gr'] = self.encoder_seq2seq.functional_groups
+        ret_dict['dec_fct_gr'] = self.decoder_seq2seq.functional_groups
         result = decoder_output, decoder_hidden, ret_dict
         return result

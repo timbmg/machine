@@ -220,7 +220,7 @@ class LinearMaskLoss(Loss):
     _NAME = "Avg LinearMaskLoss"
     _SHORTNAME = "reg_loss"
 
-    def __init__(self, size_average=False, mean=0.5, variance=0.1):
+    def __init__(self, size_average=True, mean=0.5, variance=0.1):
 
         self.size_average = size_average
         self.mean = mean
@@ -255,12 +255,13 @@ class LinearMaskLoss(Loss):
         total_loss = (self.normal.log_prob(mask.squeeze().view(-1)).exp()).sum()
         return total_loss
 
-    def eval_step(self, encoder_masks):
-        for _,mask in encoder_masks.items():
-            if mask is not None:
-                # calculate penalty of masks through normal distribution
-                self.acc_loss += self.norm_loss(mask)
-                self.norm_term += 1
+    def eval_step(self, encoder_masks_batch):
+        for masks_batch in encoder_masks_batch:
+            for _,mask in masks_batch.items():
+                if mask is not None:
+                    # calculate penalty of masks through normal distribution
+                    self.acc_loss += self.norm_loss(mask)
+                    self.norm_term += 1
 
     def cuda(self):
         self.mean = torch.Tensor([self.mean]).cuda()
@@ -270,3 +271,60 @@ class LinearMaskLoss(Loss):
     def to(self, device):
         if 'cuda' in device.type:
             self.cuda()
+
+
+class FunctionalGroupsLoss(Loss):
+    """ Batch averaged loss for functional groups(Loss):
+
+    Args:
+        size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
+    """
+    _NAME = "Avg FunctionalGroupsLoss"
+    _SHORTNAME = "fct_gr_loss"
+
+    def __init__(self, size_average=True):
+
+        self.size_average = size_average
+        super(FunctionalGroupsLoss, self).__init__(
+            self._NAME, self._SHORTNAME, None, None, None)
+
+    def eval_batch(self, decoder_outputs, other, target_variable):
+        # lists with:
+        # decoder outputs # (batch, vocab_size?)
+        # attention scores # (batch, 1, input_length)
+        encoder_outputs = other['encoder_outputs']
+        enc_fct_gr = other['enc_fct_gr']
+        dec_fct_gr = other['enc_fct_gr']
+        self.eval_step(encoder_outputs, enc_fct_gr)
+        self.eval_step(decoder_outputs, dec_fct_gr)
+
+    def get_loss(self):
+        if self.acc_loss == 0:
+            ## TODO fix backward for no masks
+            return 0
+        # total loss for all batches
+        if self.size_average:
+            # average loss per batch
+            self.acc_loss /= self.norm_term
+        return self.acc_loss
+
+
+    def eval_step(self, hidden, fct_gr):
+        for batch in hidden:
+            for fct_gr in fct_gr:
+                print(hidden.shape)
+                print(fct_gr)
+                exit()
+                hidden
+                x = model(x)
+                if ii in {3,8,15,22}:
+                    results.append(x)
+                # calculate penalty of masks through normal distribution
+                self.acc_loss += self.norm_loss(mask)
+                self.norm_term += 1
+
+    def cuda(self):
+        pass
+
+    def to(self, device):
+        pass
