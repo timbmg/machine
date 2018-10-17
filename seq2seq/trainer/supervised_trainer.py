@@ -77,13 +77,15 @@ class SupervisedTrainer(object):
                 #for name, param in model.named_parameters():
                     #tensorboard_writer.add_histogram(name+'_gradient', param.grad.cpu().data.numpy(), step)
                 if 'encoder_masks' in other:
-                    for name, mask in other['encoder_masks'].items():
-                        if mask is not None:
-                            tensorboard_writer.add_histogram('encoder_'+name, mask.view(mask.numel()), step)
+                    for batch_masks in other['encoder_masks']:
+                        for name, mask in batch_masks.items():
+                            if mask is not None:
+                                tensorboard_writer.add_histogram('encoder_'+name, mask.view(mask.numel()), step)
                 if 'decoder_masks' in other:
-                    for name, mask in other['decoder_masks'].items():
-                        if mask is not None:
-                            tensorboard_writer.add_histogram('decoder_'+name, mask.view(mask.numel()), step)
+                    for batch_masks in other['encoder_masks']:
+                        for name, mask in batch_masks.items():
+                            if mask is not None:
+                                tensorboard_writer.add_histogram('decoder_'+name, mask.view(mask.numel()), step)
         self.optimizer.step()
         model.zero_grad()
 

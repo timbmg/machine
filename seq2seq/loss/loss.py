@@ -220,7 +220,7 @@ class LinearMaskLoss(Loss):
     _NAME = "Avg LinearMaskLoss"
     _SHORTNAME = "reg_loss"
 
-    def __init__(self, size_average=False, mean=0.5, variance=0.1):
+    def __init__(self, size_average=True, mean=0.5, variance=0.1):
 
         self.size_average = size_average
         self.mean = mean
@@ -256,11 +256,12 @@ class LinearMaskLoss(Loss):
         return total_loss
 
     def eval_step(self, encoder_masks):
-        for _,mask in encoder_masks.items():
-            if mask is not None:
-                # calculate penalty of masks through normal distribution
-                self.acc_loss += self.norm_loss(mask)
-                self.norm_term += 1
+        for batch_masks in encoder_masks:
+            for _,mask in batch_masks.items():
+                if mask is not None:
+                    # calculate penalty of masks through normal distribution
+                    self.acc_loss += self.norm_loss(mask)
+                    self.norm_term += 1
 
     def cuda(self):
         self.mean = torch.Tensor([self.mean]).cuda()
