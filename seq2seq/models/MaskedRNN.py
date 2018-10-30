@@ -272,6 +272,7 @@ class RecurrentCell(nn.Module):
                 hx = hx.transpose(0, 1)
 
         output = list()
+        masks = list()
         for si in range(sequence_size):
 
             x = input[:, si].unsqueeze(1)
@@ -290,19 +291,18 @@ class RecurrentCell(nn.Module):
             elif self.mask_condition_hidden == 'x_h':
                 mask_hidden_input = torch.cat([x, hx], dim=-1)
 
-            hx, masks = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
+            hx, mask = self.forward_step_fn(x, hx, mask_input, mask_hidden_input)
 
             if self.cell == 'lstm':
                 output.append(hx[0])
             else:
                 output.append(hx)
-
+            masks.append(mask)
         output = torch.cat(output, dim=1)
         if self.cell == 'lstm':
             hx = hx[0].transpose(0, 1), hx[1].transpose(0, 1)
         else:
             hx = hx.transpose(0, 1)
-
         return output, hx, masks
 
     def _init_hidden(self, input, batch_size):
@@ -320,7 +320,7 @@ class RecurrentCell(nn.Module):
         hx_, mask_W = self.W(x, mask_input)
         hh_, mask_U = self.U(hh, mask_hidden_input)
         hh = F.tanh(hx_ + hh_ + self.b)
-        return hh, [mask_W, mask_U]
+        return hh, {'mask_W': mask_W, 'mask_U': mask_U}
 
     def _gru_forward_step(self, x, hx, mask_input, mask_hidden_input):
         hx_r, mask_W_r = self.W_r(x, mask_input)
@@ -335,7 +335,8 @@ class RecurrentCell(nn.Module):
         hh_h, mask_U_h = self.U_h((r * hx), mask_hidden_input)
         hx = z * hx + (1-z) * F.tanh(hx_h + hh_h + self.b_h)
 
-        return hx, [mask_W_r, mask_U_r, mask_W_z, mask_W_z, mask_W_h, mask_U_h]
+        return hx, {'mask_W_r': mask_W_r, 'mask_U_r': mask_U_r,
+         'mask_W_z': mask_W_z, 'mask_U_z': mask_U_z, 'mask_W_h':mask_W_h, 'mask_U_h': mask_U_h}
 
     def _lstm_forward_step(self, x, hx, mask_input, mask_hidden_input):
         # TODO:
