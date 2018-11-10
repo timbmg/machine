@@ -259,7 +259,6 @@ class RecurrentCell(nn.Module):
             raise ValueError("{} not supported.".format(self.cell))
 
     def forward(self, input, hx=None):
-
         batch_size = input.size(0) if self.batch_first else input.size(1)
         sequence_size = input.size(1) if self.batch_first else input.size(0)
 

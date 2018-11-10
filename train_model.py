@@ -14,7 +14,7 @@ from collections import OrderedDict
 import seq2seq
 from seq2seq.trainer import SupervisedTrainer
 from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, EncoderSeq2Seq
-from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss, FunctionalGroupsLoss
+from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss, FunctionalGroupLoss
 from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
 from seq2seq.optim import Optimizer
 from seq2seq.dataset import SourceField, TargetField, AttentionField
@@ -52,6 +52,7 @@ parser.add_argument('--attention_method', choices=['dot', 'mlp', 'concat', 'hard
 parser.add_argument('--use_attention_loss', action='store_true')
 parser.add_argument('--scale_attention_loss', type=float, default=1.)
 parser.add_argument('--scale_mask_reg', type=float, default=0.00001)
+parser.add_argument('--scale_func_gr', type=float, default=1.)
 parser.add_argument('--xent_loss', type=float, default=1.)
 parser.add_argument('--full_focus', action='store_true')
 parser.add_argument('--batch_size', type=int, help='Batch size', default=32)
@@ -86,6 +87,9 @@ parser.add_argument('--decoder_rnn_cell_identity_connection', action='store_true
 parser.add_argument('--use_mask_reg', action='store_true')
 parser.add_argument('--mask_reg_variance', type=float,default=0.1, help='variance of the normal distribution that penalizes the mask values')
 parser.add_argument('--mask_reg_mean', type=float,default=0.5, help='mean of the normal distribution that penalizes the mask values')
+
+parser.add_argument('--use_func_gr', action='store_true')
+
 opt = parser.parse_args()
 IGNORE_INDEX=-1
 use_output_eos = not opt.ignore_output_eos
@@ -311,13 +315,20 @@ if opt.use_mask_reg:
     loss_weights.append(opt.scale_mask_reg)
     losses.append(reg_loss)
 
+if opt.use_func_gr:
+    print('---------------------USING FUNCTIONAL GROUP LOSS ------------------------')
+    reg_loss = FunctionalGroupLoss()
+    loss_weights.append(opt.scale_func_gr)
+    losses.append(reg_loss)
+
+
 if opt.use_attention_loss:
     losses.append(AttentionLoss(ignore_index=IGNORE_INDEX))
     loss_weights.append(opt.scale_attention_loss)
 
 
-losses.append(FunctionalGroupsLoss())
-loss_weights.append(1)
+# losses.append(FunctionalGroupLoss())
+# loss_weights.append(1)
 for loss in losses:
   loss.to(device)
 

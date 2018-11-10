@@ -150,7 +150,7 @@ class DecoderRNN(BaseRNN):
 
         predicted_softmax = function(self.out(output.contiguous().view(-1, self.out.in_features)), dim=1).view(batch_size, output_size, -1)
 
-        return predicted_softmax, hidden, attn, masks
+        return predicted_softmax, output, hidden, attn, masks
 
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
                     function=F.log_softmax, teacher_forcing_ratio=0, provided_attention=None):
@@ -212,7 +212,7 @@ class DecoderRNN(BaseRNN):
                 # Perform one forward step
                 if self.attention and isinstance(self.attention.method, HardGuidance):
                     attention_method_kwargs['step'] = di
-                decoder_output, decoder_hidden, step_attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
+                decoder_output, decoder_activations, decoder_hidden, step_attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
                                                                          function=function, **attention_method_kwargs)
                 # Remove the unnecessary dimension.
                 step_output = decoder_output.squeeze(1)
@@ -227,7 +227,7 @@ class DecoderRNN(BaseRNN):
             # Forward step without unrolling
             if self.attention and isinstance(self.attention.method, HardGuidance):
                 attention_method_kwargs['step'] = -1
-            decoder_output, decoder_hidden, attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, **attention_method_kwargs)
+            decoder_output, decoder_activations, decoder_hidden, attn, masks = self.forward_step(decoder_input, decoder_hidden, encoder_outputs, function=function, **attention_method_kwargs)
 
             for di in range(decoder_output.size(1)):
                 step_output = decoder_output[:, di, :]
@@ -236,7 +236,7 @@ class DecoderRNN(BaseRNN):
                 else:
                     step_attn = None
                 decode(di, step_output, step_attn)
-
+        ret_dict['decoder_activations'] = decoder_activations
         ret_dict[DecoderRNN.KEY_SEQUENCE] = sequence_symbols
         ret_dict[DecoderRNN.KEY_LENGTH] = lengths.tolist()
         ret_dict['decoder_masks'] = masks

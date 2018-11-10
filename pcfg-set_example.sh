@@ -1,17 +1,7 @@
-#PBS -S /bin/bash
-#PBS -lnodes=1
-#PBS -qgpu
-#PBS -lwalltime=01:00:00
-
-
-
-FOLDER=../
-TRAIN_PATH=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/train.tsv
-DEV_PATH=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/validation.tsv
-TEST_PATH_1=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/heldout_tables.tsv
-TEST_PATH_2=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/heldout_inputs.tsv
-TEST_PATH_3=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/heldout_compositions.tsv
-TEST_PATH_4=$FOLDER/machine-tasks/LookupTables/lookup-3bit/samples/sample1/new_compositions.tsv
+#! /bin/sh
+TRAIN_PATH=../machine-tasks/PCFG-SET/PCFG-SET_transformed/train_pcfg_set.tsv
+DEV_PATH=../machine-tasks/PCFG-SET/PCFG-SET_transformed/dev_pcfg_set.tsv
+TEST_PATH_1=../machine-tasks/PCFG-SET/PCFG-SET_transformed/test_pcfg_set.tsv
 EMB_SIZE=16
 H_SIZE=512
 DROPOUT_ENCODER=0
@@ -37,9 +27,9 @@ DECODER_RNN_CELL_MASK_CONIDTION_HIDDEN='x_h'
 
 echo $ENCODER_CELL
 echo $DECODER_CELL
-EXPT_DIR=$FOLDER/models/lookup_table_task/baseline_no_mask_gru_ignore_input_eos_3
-LOG_FILE=$EXP_DIR/log.log
-python3 train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor $TEST_PATH_1 $TEST_PATH_2 $TEST_PATH_3 $TEST_PATH_4 \
+EXPT_DIR=models/masked_srn
+LOG_FILE=masked_srn_encoder_feat.log
+python3 ../machine/train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor $TEST_PATH_1 $TEST_PATH_2 $TEST_PATH_3 $TEST_PATH_4 \
 --output_dir $EXPT_DIR --write-logs $LOG_FILE --print_every $PRINT_EVERY --embedding_size $EMB_SIZE --hidden_size $H_SIZE \
 --encoder_cell $ENCODER_CELL --decoder_cell $DECODER_CELL --attention $ATTN --epoch $EPOCH --save_every $SAVE_EVERY \
 --attention_method $ATTN_METHOD --batch_size $BATCH_SIZE --dropout_p_encoder $DROPOUT_ENCODER --dropout_p_decoder $DROPOUT_DECODER \
@@ -52,8 +42,6 @@ python3 train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor $TEST_PATH_
 --encoder_rnn_cell_mask_condition_hidden $ENCODER_RNN_CELL_MASK_CONIDTION_HIDDEN \
 --decoder_rnn_cell_mask_condition_input $DECODER_RNN_CELL_MASK_CONIDTION_INPUT \
 --decoder_rnn_cell_mask_condition_hidden $DECODER_RNN_CELL_MASK_CONIDTION_HIDDEN \
---full_focus \
---ignore_output_eos
-#--decoder_rnn_cell_identity_connection \
-#--encoder_rnn_cell_identity_connection \
-#--mask_reg_mean 0.6 \
+--use_func_gr \
+--decoder_rnn_cell_identity_connection \
+--encoder_rnn_cell_identity_connection

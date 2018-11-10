@@ -155,7 +155,7 @@ class Seq2seq(nn.Module):
         encoder_outputs, encoder_hidden, encoder_masks  = self.encoder_seq2seq.forward(input_variable, input_lengths)
         decoder_output, decoder_hidden, ret_dict = self.decoder_seq2seq.forward(encoder_hidden, encoder_outputs, target_variables, teacher_forcing_ratio)
         ret_dict['encoder_masks'] = encoder_masks
-        ret_dict['encoder_outputs'] = encoder_outputs
+        ret_dict['encoder_activations'] = encoder_outputs
         ret_dict['enc_fct_gr'] = self.encoder_seq2seq.functional_groups
         ret_dict['dec_fct_gr'] = self.decoder_seq2seq.functional_groups
         result = decoder_output, decoder_hidden, ret_dict

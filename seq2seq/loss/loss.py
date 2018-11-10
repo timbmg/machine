@@ -128,7 +128,7 @@ class NLLLoss(Loss):
         size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
 
-    _NAME = "Avg NLLLoss"
+    _NAME = "Avg_NLLLoss"
     _SHORTNAME = "nll_loss"
     _INPUTS = "decoder_output"
     _TARGETS = "decoder_output"
@@ -196,7 +196,7 @@ class AttentionLoss(NLLLoss):
     Args:
         ignore_index (int, optional): index of token to be masked
     """
-    _NAME = "Attention Loss"
+    _NAME = "Attention_Loss"
     _SHORTNAME = "attn_loss"
     _INPUTS = "attention_score"
     _TARGETS = "attention_target"
@@ -217,7 +217,7 @@ class LinearMaskLoss(Loss):
         size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
         variance (float, optional): variance of the normal distribution that penalizes the mask values
     """
-    _NAME = "Avg LinearMaskLoss"
+    _NAME = "Avg_LinearMaskLoss"
     _SHORTNAME = "reg_loss"
 
     def __init__(self, size_average=True, mean=0.5, variance=0.1):
@@ -273,30 +273,31 @@ class LinearMaskLoss(Loss):
             self.cuda()
 
 
-class FunctionalGroupsLoss(Loss):
-    """ Batch averaged loss for functional groups(Loss):
+class FunctionalGroupLoss(Loss):
+    """ Batch averaged loss for functional groups:
 
     Args:
         size_average (bool, optional): refer to http://pytorch.org/docs/master/nn.html#nllloss
     """
-    _NAME = "Avg FunctionalGroupsLoss"
+    _NAME = "Avg_FunctionalGroupLoss"
     _SHORTNAME = "fct_gr_loss"
 
     def __init__(self, size_average=True):
 
         self.size_average = size_average
-        super(FunctionalGroupsLoss, self).__init__(
+        super(FunctionalGroupLoss, self).__init__(
             self._NAME, self._SHORTNAME, None, None, None)
 
     def eval_batch(self, decoder_outputs, other, target_variable):
         # lists with:
         # decoder outputs # (batch, vocab_size?)
         # attention scores # (batch, 1, input_length)
-        encoder_outputs = other['encoder_outputs']
+        encoder_activations = other['encoder_activations']
+        decoder_activations = other['decoder_activations']
         enc_fct_gr = other['enc_fct_gr']
-        dec_fct_gr = other['enc_fct_gr']
-        self.eval_step(encoder_outputs, enc_fct_gr)
-        self.eval_step(decoder_outputs, dec_fct_gr)
+        dec_fct_gr = other['dec_fct_gr']
+        self.eval_step(encoder_activations, enc_fct_gr)
+        self.eval_step(decoder_activations, dec_fct_gr)
 
     def get_loss(self):
         if self.acc_loss == 0:
@@ -309,20 +310,12 @@ class FunctionalGroupsLoss(Loss):
         return self.acc_loss
 
 
-    def eval_step(self, hidden, fct_gr):
-        for batch in hidden:
-            for fct_gr in fct_gr:
-                print(hidden.shape)
-                print(fct_gr)
-                exit()
-                hidden
-                x = model(x)
-                if ii in {3,8,15,22}:
-                    results.append(x)
-                # calculate penalty of masks through normal distribution
-                self.acc_loss += self.norm_loss(mask)
-                self.norm_term += 1
-
+    def eval_step(self, activations_batch, fct_gr):
+        n_groups = fct_gr.size(0)
+        for activations in activations_batch:
+            av_var_gr = activations[:,fct_gr].transpose(1,0).contiguous().view(n_groups,-1).var(1).sum()
+            self.acc_loss += av_var_gr
+            self.norm_term += 1
     def cuda(self):
         pass
 
