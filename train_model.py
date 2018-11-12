@@ -88,7 +88,7 @@ parser.add_argument('--use_mask_reg', action='store_true')
 parser.add_argument('--mask_reg_variance', type=float,default=0.1, help='variance of the normal distribution that penalizes the mask values')
 parser.add_argument('--mask_reg_mean', type=float,default=0.5, help='mean of the normal distribution that penalizes the mask values')
 
-parser.add_argument('--use_func_gr', action='store_true')
+parser.add_argument('--use_fct_gr_loss', action='store_true')
 
 opt = parser.parse_args()
 IGNORE_INDEX=-1
@@ -315,7 +315,7 @@ if opt.use_mask_reg:
     loss_weights.append(opt.scale_mask_reg)
     losses.append(reg_loss)
 
-if opt.use_func_gr:
+if opt.use_fct_gr_loss:
     print('---------------------USING FUNCTIONAL GROUP LOSS ------------------------')
     reg_loss = FunctionalGroupLoss()
     loss_weights.append(opt.scale_func_gr)
