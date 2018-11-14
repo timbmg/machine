@@ -22,7 +22,11 @@ ERR=0
 
 # Start training
 echo "Test training"
+<<<<<<< HEAD
+python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor $DEV_PATH $TRAIN_PATH --output_dir $EXPT_DIR --print_every 20 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --epoch $EPOCH --save_every $CP_EVERY 
+=======
 python train_model.py --train $TRAIN_PATH --dev $DEV_PATH --monitor $DEV_PATH $TRAIN_PATH --output_dir $EXPT_DIR --print_every 30 --embedding_size $EMB_SIZE --hidden_size $H_SIZE --rnn_cell $CELL --epoch $EPOCH --save_every $CP_EVERY --batch_size 6 --write-logs 'log_test'
+>>>>>>> adc5f82016ad8e1079c1a8481f3e388a23d67e0a
 ERR=$((ERR+$?)); EX=$((EX+1))
 
 rm $EXPT_DIR/log_test

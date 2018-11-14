@@ -11,16 +11,18 @@ import pickle
 
 from collections import OrderedDict
 
-import seq2seq
-from seq2seq.trainer import SupervisedTrainer
-from seq2seq.models import EncoderRNN, DecoderRNN, Seq2seq, EncoderSeq2Seq
-from seq2seq.loss import Perplexity, AttentionLoss, NLLLoss, LinearMaskLoss, FunctionalGroupLoss
-from seq2seq.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
-from seq2seq.optim import Optimizer
-from seq2seq.dataset import SourceField, TargetField, AttentionField
-from seq2seq.evaluator import Predictor, Evaluator
-from seq2seq.util.checkpoint import Checkpoint
+import machine
 
+from machine.loss import Perplexity, AttentionLoss, NLLLoss
+from machine.metrics import WordAccuracy, SequenceAccuracy, FinalTargetAccuracy, SymbolRewritingAccuracy
+from machine.optim import Optimizer
+from machine.dataset import SourceField, TargetField, AttentionField
+from machine.evaluator import Predictor, Evaluator
+from machine.util.checkpoint import Checkpoint
+
+from machine_mask_func.loss import LinearMaskLoss, FunctionalGroupLoss
+from machine_mask_func.models import EncoderRNN, DecoderRNN, Seq2seq
+from machine_mask_func.trainer import SupervisedTrainer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 try:
