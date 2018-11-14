@@ -13,6 +13,10 @@ notifications:
 install:
   - pip install -U pip
   - pip -q install -r requirements.txt
+<<<<<<< HEAD
+=======
+  - pip install matplotlib
+>>>>>>> adc5f82016ad8e1079c1a8481f3e388a23d67e0a
 
   # dev dependencies
   - pip install flake8
